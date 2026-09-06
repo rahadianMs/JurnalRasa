@@ -1,23 +1,114 @@
 @import "tailwindcss";
 
 :root {
-  --bento-bg: #F4F4F2;
-  --bento-card: #FFFFFF;
-  --bento-text: #1A1A1A;
-  --bento-muted: #71716E;
-  --bento-accent: #FF5C35;
-  --bento-border: rgba(0, 0, 0, 0.08);
+  --nb-bg: #F7F4EA;
+  --nb-paper: #FFFDF7;
+  --nb-card: #FFFFFF;
+  --nb-ink: #18181B;
+  --nb-border: #18181B;
+  --nb-accent: #FF5533;
+  --nb-yellow: #FEF08A;
+  --nb-mint: #BBF7D0;
+  --nb-sky: #BAE6FD;
+  --nb-lilac: #E9D5FF;
 }
 
 body {
-  background-color: #F4F4F2;
-  color: #1A1A1A;
+  background-color: #F7F4EA;
+  color: #18181B;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+.font-handwriting {
+  font-family: 'Kalam', cursive;
+}
+
+.font-display {
+  font-family: 'Space Grotesk', -apple-system, sans-serif;
+}
+
+.font-mono-code {
+  font-family: 'Space Mono', monospace;
+}
+
+/* Subtle dot-grid paper texture */
+.journal-dot-grid {
+  background-color: #F7F4EA;
+  background-image: radial-gradient(rgba(24, 24, 27, 0.12) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+/* Lined notebook paper texture */
+.journal-lined {
+  background-color: #FFFDF7;
+  background-image: linear-gradient(rgba(24, 24, 27, 0.07) 1px, transparent 1px);
+  background-size: 100% 28px;
+}
+
 @layer utilities {
+  .nb-box {
+    background-color: #FFFFFF;
+    border: 2.5px solid #18181B;
+    box-shadow: 3.5px 3.5px 0px #18181B;
+  }
+  
+  .nb-box-sm {
+    background-color: #FFFFFF;
+    border: 2px solid #18181B;
+    box-shadow: 2px 2px 0px #18181B;
+  }
+
+  .nb-box-lg {
+    background-color: #FFFFFF;
+    border: 2.5px solid #18181B;
+    box-shadow: 5px 5px 0px #18181B;
+  }
+
+  .nb-btn {
+    border: 2px solid #18181B;
+    box-shadow: 2.5px 2.5px 0px #18181B;
+    transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.1s ease;
+  }
+  
+  .nb-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3.5px 3.5px 0px #18181B;
+  }
+  
+  .nb-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0.5px 0.5px 0px #18181B;
+  }
+
+  .nb-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border: 1.5px solid #18181B;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    box-shadow: 1.5px 1.5px 0px #18181B;
+  }
+
+  .nb-stamp-visited {
+    border: 2px dashed #15803d;
+    color: #15803d;
+    background-color: #f0fdf4;
+    transform: rotate(-2deg);
+  }
+
+  .nb-stamp-wishlist {
+    border: 2px dashed #ea580c;
+    color: #ea580c;
+    background-color: #fff7ed;
+    transform: rotate(2deg);
+  }
+
   .animate-fade-in {
     animation: fadeIn 0.2s ease-out forwards;
   }
@@ -27,25 +118,6 @@ body {
   .animate-slide-down {
     animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-  
-  .bento-card {
-    background-color: #FFFFFF;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 1.25rem;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
-  }
-  
-  .bento-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.25rem 0.625rem;
-    border-radius: 9999px;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
 }
 
 @keyframes fadeIn {
@@ -54,33 +126,34 @@ body {
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-12px); }
+  from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Google Maps canvas styling matching Bento aesthetic */
+/* Google Maps canvas styling matching Neo-brutalist border */
 .gm-style {
   font-family: inherit !important;
 }
 
-/* Custom sleek scrollbar for cards feed */
+/* Custom scrollbar matching neo-brutalist aesthetic */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #F7F4EA;
+  border-left: 2px solid #18181B;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
-  border-radius: 9999px;
+  background: #18181B;
+  border-radius: 0px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.22);
+  background: #FF5533;
 }
 

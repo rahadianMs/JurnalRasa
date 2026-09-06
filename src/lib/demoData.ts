@@ -14,7 +14,7 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     tags: ["Ramen", "Halal", "Viral TikTok", "Jepang", "Pedas"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://vt.tiktok.com/ZSqFoDRbs/",
-    vibesOrSummary: "Ramen halal kuah creamy bara pedas gurih viral dengan kuah kental kaldu ayam asli.",
+    vibesOrSummary: "Halal ramen with rich, creamy spicy broth made from authentic slow-simmered chicken collagen.",
   },
   {
     placeId: "ChIJb8n9_gltik_blokm",
@@ -29,7 +29,7 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     tags: ["Street Food", "Viral TikTok", "Late Night", "Halal"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=gultik%20blok%20m",
-    vibesOrSummary: "Gulai sapi legendaris tengah malam di trotoar Blok M dengan kuah gurih berempah khas.",
+    vibesOrSummary: "Legendary late-night sidewalk beef curry in Blok M with signature rich, aromatic spiced broth.",
   },
   {
     placeId: "ChIJ77_claypot_popo",
@@ -44,7 +44,7 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     tags: ["Comfort Food", "Cafe", "Viral TikTok", "Hidden Gem"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=claypot%20popo%20melawai",
-    vibesOrSummary: "Comfort food bergaya peranakan disajikan mendidih di claypot tembikar panas.",
+    vibesOrSummary: "Peranakan-style comfort dishes served piping hot in traditional clay pottery.",
   },
   {
     placeId: "ChIJ44_warung_mak_beng",
@@ -56,10 +56,10 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     rating: 4.9,
     saveCount: 89,
     topDishes: ["Sup Kepala Ikan Bumbu Kuning", "Ikan Goreng Sambal Pedas"],
-    tags: ["Legendary", "Seafood", "Pedas", "Hidden Gem"],
+    tags: ["Legendary", "Seafood", "Spicy", "Hidden Gem"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=warung%20mak%20beng%20sanur",
-    vibesOrSummary: "Warung legendaris sejak 1941 dengan hanya satu menu ikonik sup kepala ikan khas Sanur.",
+    vibesOrSummary: "Iconic culinary establishment since 1941 featuring a single celebrated fish head soup recipe.",
   },
   {
     placeId: "ChIJ33_sate_maranggi_yetty",
@@ -74,7 +74,7 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     tags: ["Legendary", "Roadtrip", "Halal", "Viral TikTok"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=sate%20maranggi%20hj%20yetty",
-    vibesOrSummary: "Sate sapi manis legit yang dipanggang arang sempurna dengan sambal tomat segar ulek.",
+    vibesOrSummary: "Sweet and savory marinated beef skewers charcoal-grilled to perfection with fresh spicy tomato sambal.",
   },
   {
     placeId: "ChIJ22_nasgor_kebonsirih",
@@ -86,10 +86,10 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     rating: 4.6,
     saveCount: 37,
     topDishes: ["Nasi Goreng Kambing Jumbo", "Sate Kambing Bumbu Kecap", "Emping Melinjo"],
-    tags: ["Street Food", "Legendaris", "Halal", "Late Night"],
+    tags: ["Street Food", "Legendary", "Halal", "Late Night"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=nasi%20goreng%20kambing%20kebon%20sirih",
-    vibesOrSummary: "Nasi goreng kambing wajan raksasa beraroma minyak samin dan rempah kapulaga tajam.",
+    vibesOrSummary: "Giant wok fried rice infused with aromatic ghee (minyak samin) and cardamom spices.",
   },
   {
     placeId: "ChIJ11_bebek_sinjay",
@@ -101,10 +101,10 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     rating: 4.7,
     saveCount: 51,
     topDishes: ["Bebek Goreng Kremes", "Sambal Pencit Mangga Muda", "Nasi Hangat Daun Pisang"],
-    tags: ["Pedas", "Viral TikTok", "Halal", "Comfort Food"],
+    tags: ["Spicy", "Viral TikTok", "Halal", "Comfort Food"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=bebek%20sinjay%20surabaya",
-    vibesOrSummary: "Bebek renyah gurih bumbu rempah kuning dipadukan dengan pedas asamnya sambal pencit mangga.",
+    vibesOrSummary: "Crispy savory fried duck coated with yellow spiced crumbs paired with spicy young mango sambal.",
   },
   {
     placeId: "ChIJ55_gudeg_yudjum",
@@ -119,7 +119,7 @@ export const INITIAL_PUBLIC_PLACES: PublicPlace[] = [
     tags: ["Traditional", "Legendary", "Halal", "Must Visit"],
     lastUpdated: new Date().toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=gudeg%20yu%20djum%20wijilan",
-    vibesOrSummary: "Pusat gudeg kering asli Jogja dimasak kayu bakar dengan areh santan kental gurih.",
+    vibesOrSummary: "The home of authentic dry gudeg wood-fired with rich savory coconut areh.",
   }
 ];
 
@@ -132,13 +132,16 @@ export const INITIAL_USER_SAVED_PLACES: UserSavedPlace[] = [
     lat: -6.2443,
     lng: 106.7991,
     rating: 4.7,
+    tasteRating: 5,
+    visited: true,
+    visitedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
     sourceUrl: "https://www.tiktok.com/search?q=gultik%20blok%20m",
     recommendedDishes: ["Gulai Sapi Telur", "Kerupuk Kulit Kuah"],
-    estimatedPrice: "Rp 15.000 - Rp 30.000",
+    estimatedPrice: "Rp 15,000 - Rp 30,000",
     tags: ["Street Food", "Viral TikTok", "Late Night"],
-    personalNotes: "Datang sebelum jam 8 malam biar ga antre panjang bareng anak-anak kantor.",
+    personalNotes: "Arrive before 8 PM to avoid the office rush hour lines. The savory spiced broth is incredible paired with crispy crackers!",
     savedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    vibesOrSummary: "Gulai sapi legendaris tengah malam di trotoar Blok M.",
+    vibesOrSummary: "Legendary late-night sidewalk beef curry in Blok M.",
   },
   {
     placeId: "ChIJ77_claypot_popo",
@@ -148,18 +151,20 @@ export const INITIAL_USER_SAVED_PLACES: UserSavedPlace[] = [
     lat: -6.2435,
     lng: 106.7975,
     rating: 4.8,
+    tasteRating: 4,
+    visited: false, // Wishlist
     sourceUrl: "https://www.tiktok.com/search?q=claypot%20popo%20melawai",
     recommendedDishes: ["Claypot Siram Telur Mentah", "Es Teh Krisan"],
-    estimatedPrice: "Rp 40.000 - Rp 65.000",
+    estimatedPrice: "Rp 40,000 - Rp 65,000",
     tags: ["Comfort Food", "Cafe", "Viral TikTok"],
-    personalNotes: "Cobain saat cuaca hujan atau hangout santai sore di kawasan Blok M.",
+    personalNotes: "Saved on wishlist for a cozy dinner on a rainy evening or when exploring Melawai.",
     savedAt: new Date(Date.now() - 86400000).toISOString(),
-    vibesOrSummary: "Comfort food peranakan hangat mendidih di claypot.",
+    vibesOrSummary: "Warm comfort food bubbling in hot clay pottery.",
   }
 ];
 
 export const CITIES = [
-  "Semua Kota",
+  "All Cities",
   "Jakarta Selatan",
   "Jakarta Pusat",
   "Jakarta Barat",
@@ -170,14 +175,14 @@ export const CITIES = [
 ];
 
 export const POPULAR_TAGS = [
-  "Semua Kategori",
+  "All Categories",
   "Street Food",
   "Viral TikTok",
   "Comfort Food",
   "Hidden Gem",
   "Halal",
   "Cafe",
-  "Pedas",
+  "Spicy",
   "Late Night",
   "Legendary",
 ];

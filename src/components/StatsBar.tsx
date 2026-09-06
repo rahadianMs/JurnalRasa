@@ -31,66 +31,66 @@ export const StatsBar: React.FC<StatsBarProps> = ({ myPlaces, publicPlaces, mode
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-      {/* Bento Tile 1: Koleksi Saya */}
-      <div className="bg-white rounded-2xl p-4 border border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:border-black/20 transition-all flex items-center gap-3.5">
-        <div className="w-11 h-11 rounded-xl bg-orange-500/10 text-[#FF5C35] flex items-center justify-center shrink-0 border border-[#FF5C35]/20">
-          <Compass className="w-5 h-5" />
+      {/* Bento Tile 1: My Collection */}
+      <div className="bg-[#FFFDF7] rounded-2xl p-4 border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform flex items-center gap-3.5">
+        <div className="w-11 h-11 rounded-xl bg-[#FEF08A] text-[#18181B] flex items-center justify-center shrink-0 border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] font-black">
+          <Compass className="w-5 h-5 stroke-[2.5]" />
         </div>
         <div className="min-w-0">
-          <span className="text-[10px] font-bold text-[#71716E] uppercase tracking-wider block">
-            Koleksi Saya
+          <span className="text-[10px] font-black text-[#71716E] uppercase tracking-wider block font-mono-code">
+            My Collection
           </span>
-          <p className="text-lg font-black text-[#1A1A1A] tracking-tight leading-tight">
-            {myPlaces.length} <span className="text-xs font-semibold text-[#71716E]">Tersimpan</span>
+          <p className="text-lg font-black font-display text-[#18181B] tracking-tight leading-tight">
+            {myPlaces.length} <span className="text-xs font-bold text-[#52525B]">Saved</span>
           </p>
         </div>
       </div>
 
-      {/* Bento Tile 2: Viral #1 Komunitas */}
-      <div className="bg-white rounded-2xl p-4 border border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:border-black/20 transition-all flex items-center gap-3.5">
-        <div className="w-11 h-11 rounded-xl bg-[#FF5C35] text-white flex items-center justify-center shrink-0 shadow-sm shadow-[#FF5C35]/30">
-          <Flame className="w-5 h-5" />
+      {/* Bento Tile 2: Viral #1 Trending */}
+      <div className="bg-[#FEF08A] rounded-2xl p-4 border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform flex items-center gap-3.5">
+        <div className="w-11 h-11 rounded-xl bg-[#FF5533] text-white flex items-center justify-center shrink-0 border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B]">
+          <Flame className="w-5 h-5 stroke-[2.5]" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-1">
-            <span className="text-[10px] font-bold text-[#71716E] uppercase tracking-wider block truncate">
-              Trending #1
+            <span className="text-[10px] font-black text-[#18181B] uppercase tracking-wider block truncate font-mono-code">
+              #1 Trending
             </span>
-            <span className="text-[10px] bg-[#FF5C35]/10 text-[#FF5C35] font-bold px-1.5 py-0.5 rounded-full">
+            <span className="text-[9px] bg-[#18181B] text-[#FEF08A] font-black px-1.5 py-0.5 rounded font-mono-code">
               {topTrending ? `${topTrending.saveCount} saves` : "42 saves"}
             </span>
           </div>
-          <p className="text-sm font-extrabold text-[#1A1A1A] truncate mt-0.5">
+          <p className="text-sm font-black font-display text-[#18181B] truncate mt-0.5">
             {topTrending ? topTrending.name : "Gultik Blok M"}
           </p>
         </div>
       </div>
 
-      {/* Bento Tile 3: Menu Paling Dicari */}
-      <div className="bg-white rounded-2xl p-4 border border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:border-black/20 transition-all flex items-center gap-3.5">
-        <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-500/20">
-          <Utensils className="w-5 h-5" />
+      {/* Bento Tile 3: Most Wanted Dish */}
+      <div className="bg-[#BAE6FD] rounded-2xl p-4 border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform flex items-center gap-3.5">
+        <div className="w-11 h-11 rounded-xl bg-white text-[#18181B] flex items-center justify-center shrink-0 border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B]">
+          <Utensils className="w-5 h-5 stroke-[2.5]" />
         </div>
         <div className="min-w-0">
-          <span className="text-[10px] font-bold text-[#71716E] uppercase tracking-wider block truncate">
-            Menu Paling Dicari
+          <span className="text-[10px] font-black text-[#18181B] uppercase tracking-wider block truncate font-mono-code">
+            Most Wanted Dish
           </span>
-          <p className="text-sm font-extrabold text-[#1A1A1A] truncate mt-0.5">{topDish}</p>
-          <span className="text-[10px] text-[#71716E] font-medium">Banyak Direkomendasikan</span>
+          <p className="text-sm font-black font-display text-[#18181B] truncate mt-0.5">{topDish}</p>
+          <span className="text-[10px] text-[#18181B] font-bold font-handwriting">Popular recommendation</span>
         </div>
       </div>
 
-      {/* Bento Tile 4: Pusat Kuliner Teraktif */}
-      <div className="bg-white rounded-2xl p-4 border border-black/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.02)] hover:border-black/20 transition-all flex items-center gap-3.5">
-        <div className="w-11 h-11 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0 border border-purple-500/20">
-          <MapPin className="w-5 h-5" />
+      {/* Bento Tile 4: Top Culinary Hub */}
+      <div className="bg-[#FFD6A5] rounded-2xl p-4 border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-transform flex items-center gap-3.5">
+        <div className="w-11 h-11 rounded-xl bg-white text-[#18181B] flex items-center justify-center shrink-0 border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B]">
+          <MapPin className="w-5 h-5 stroke-[2.5]" />
         </div>
         <div className="min-w-0">
-          <span className="text-[10px] font-bold text-[#71716E] uppercase tracking-wider block truncate">
-            Pusat Kuliner Teraktif
+          <span className="text-[10px] font-black text-[#18181B] uppercase tracking-wider block truncate font-mono-code">
+            Top Culinary Hub
           </span>
-          <p className="text-sm font-extrabold text-[#1A1A1A] truncate mt-0.5">{topCity}</p>
-          <span className="text-[10px] text-[#71716E] font-medium">Trending Area</span>
+          <p className="text-sm font-black font-display text-[#18181B] truncate mt-0.5">{topCity}</p>
+          <span className="text-[10px] text-[#18181B] font-bold font-handwriting">Active foodie area</span>
         </div>
       </div>
     </div>

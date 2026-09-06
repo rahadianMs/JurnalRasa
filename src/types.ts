@@ -13,6 +13,10 @@ export interface UserSavedPlace {
   personalNotes?: string;
   savedAt: string | number;
   vibesOrSummary?: string;
+  visited?: boolean; // false = Wishlist (Ingin Dicoba), true = Sudah Dikunjungi
+  visitedAt?: string;
+  tasteRating?: number; // Personal rating 1-5
+  visualCue?: string;
 }
 
 export interface PublicPlace {
@@ -53,6 +57,7 @@ export interface CulinaryParseResult {
   vibesOrSummary: string;
   sourceUrl?: string;
   personalNotes?: string;
+  visualCue?: string;
 }
 
 export interface ParseApiResponse {
@@ -61,6 +66,10 @@ export interface ParseApiResponse {
   isFallback: boolean;
   fallbackNotice?: string;
   isMultiPlace?: boolean;
+  reasoningStep?: {
+    visualCues?: string[];
+    locationReasoning?: string;
+  };
   places: CulinaryParseResult[];
   data?: CulinaryParseResult;
   message?: string;
@@ -70,9 +79,19 @@ export interface ParseApiResponse {
 
 export type MapMode = "my_radar" | "community_pulse";
 
+export type AppTab = "journal" | "copilot" | "map" | "community";
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "model";
+  content: string;
+  timestamp: string;
+}
+
 export interface FilterState {
   searchQuery: string;
   selectedCity: string;
   selectedTag: string;
   sortBy: "latest" | "most_saved" | "rating";
 }
+
