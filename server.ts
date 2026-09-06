@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ path: [".env.local", ".env"] });
 
 export interface CulinaryParseResult {
   placeId: string;
@@ -280,7 +280,7 @@ async function geocodePlace(
   lng: number;
   rating: number;
 }> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Protect against searching ONLY a city name as a place or invalid keywords
   let safeSearchName = name.trim();
@@ -400,9 +400,10 @@ async function geocodePlace(
 
 // Config endpoint for client awareness
 app.get("/api/config", (req, res) => {
+  const mapsKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || "";
   res.json({
-    hasMapsKey: Boolean(process.env.GOOGLE_MAPS_API_KEY),
-    googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || "",
+    hasMapsKey: Boolean(mapsKey),
+    googleMapsKey: mapsKey,
     status: "ok",
   });
 });
@@ -873,7 +874,7 @@ app.get("/api/health", (req, res) => {
 
 // Google Maps config endpoint
 app.get("/api/config/maps", (req, res) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY || "";
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || "";
   res.json({ apiKey });
 });
 
@@ -1251,7 +1252,7 @@ app.get("/api/places/search", async (req, res) => {
       return res.json({ success: true, isConnected: false, places: [] });
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
     if (apiKey) {
       try {
         const fullQuery = [query, city && city !== "All Cities" ? city : "", "Indonesia"]
