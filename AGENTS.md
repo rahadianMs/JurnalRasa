@@ -37,11 +37,13 @@
   - Borders: High-contrast solid ink lines (`2px` to `3px` solid `#18181B`).
   - Drop Shadows: Hard, unblurred offset shadows (`shadow-[2.5px_2.5px_0px_#18181B]`, `shadow-[4px_4px_0px_#18181B]`).
   - Accent Palette: Tomato Red (`#FF5533`), Pastel Yellow (`#FEF08A`), Sky Blue (`#BAE6FD`), Mint Green (`#BBF7D0`), Bubblegum Pink (`#FF99C8`).
-- **Backend / APIs (`server.ts`)**:
+- **Backend / APIs (`server.ts` & `src/server/secretManager.ts`)**:
   - `POST /api/parse-link`: Extracts place name, address, city, signature dishes, visual cues, and Google Maps coordinates from TikTok / Instagram URLs using Gemini + search grounding.
   - `POST /api/chat-copilot`: AI conversational assistant grounded strictly in user's journal entries (`gemini-3.8-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash`).
   - `GET /api/places-autocomplete`: Google Maps Places Autocomplete proxy with Indonesia/global fallback.
   - `GET /api/places-details`: Google Maps Place Details proxy for geometry, formatted address, rating, and placeId.
+  - `GET /api/admin/secrets-status`: Diagnostic endpoint returning GCP Secret Manager connection status and key sources (zero leaks).
+  - **Secret Management**: Integrated with `@google-cloud/secret-manager` via `src/server/secretManager.ts` with in-memory TTL caching, automatic GCP Project ID resolution, and seamless fallback to environment variables (`GEMINI_API_KEY`, `GOOGLE_MAPS_API_KEY`).
 - **Database & Auth (Firebase Firestore)**:
   - Database ID: `ai-studio-rasaradar-8d9bddd9-1bbd-4920-a0f5-24b5f4d9fcd2`.
   - Auth: Firebase Auth (Anonymous guest mode + Google Sign-In popup).

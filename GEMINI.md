@@ -17,10 +17,11 @@
    - Always grounded in the user's personal journal entries (`journalPlaces`).
    - Format responses using clean Markdown. The frontend renders messages with `react-markdown` so bold words, bullet lists, and section headers look clean without raw unparsed asterisks.
 
-3. **Backend API Contracts**:
+3. **Backend API Contracts & Secret Management**:
    - All Gemini SDK calls (`@google/genai`) are executed server-side in `server.ts`.
    - Primary model fallback chain: `gemini-3.8-flash` -> `gemini-3.1-flash-lite` -> `gemini-2.5-flash`.
    - Never expose `process.env.GEMINI_API_KEY` or Google Maps API keys to the frontend client.
+   - API keys are securely retrieved via Google Cloud Secret Manager (`src/server/secretManager.ts`) with in-memory TTL caching and graceful fallback to environment variables.
 
 4. **Design Philosophy**:
    - Neo-brutalist Notebook aesthetic: Solid borders (`#18181B`), crisp drop shadows, warm cream card backgrounds (`#FFFDF7`), and bold typographic hierarchy.

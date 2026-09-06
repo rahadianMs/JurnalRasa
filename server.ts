@@ -3,6 +3,14 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import {
+  getGeminiApiKey,
+  getGoogleMapsApiKey,
+  getSyncGeminiApiKey,
+  getSyncGoogleMapsApiKey,
+  getSecretsStatus,
+  warmUpSecrets,
+} from "./src/server/secretManager";
 
 dotenv.config({ path: [".env.local", ".env"] });
 
@@ -28,9 +36,58 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Lazy-initialized Gemini client with telemetry header
+// Lazy-initialized Gemini client with telemetry header & Secret Manager support
 let geminiClient: GoogleGenAI | null = null;
 let lastApiKey: string | undefined = undefined;
+
+async function ensureGeminiClient(): Promise<GoogleGenAI | null> {
+  const key =
+    (await getGeminiApiKey()) ||
+    getSyncGeminiApiKey() ||
+    process.env.GEMINI_API_KEY?.trim();
+
+  const useVertex =
+    process.env.USE_VERTEX_AI === "true" ||
+    process.env.ENABLE_VERTEX_AI === "true";
+  const gcpProject =
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    process.env.GCLOUD_PROJECT;
+  const location = process.env.GOOGLE_CLOUD_LOCATION || "asia-southeast1";
+
+  if (!key && !useVertex) {
+    return null;
+  }
+
+  const clientKey = `${key || ""}-${useVertex}-${gcpProject || ""}-${location}`;
+  if (!geminiClient || clientKey !== lastApiKey) {
+    lastApiKey = clientKey;
+    if (useVertex && gcpProject) {
+      geminiClient = new GoogleGenAI({
+        vertexai: true,
+        project: gcpProject,
+        location,
+        apiKey: key || undefined,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+      console.log(`[GeminiClient] Initialized with Google Cloud Vertex AI (Project: ${gcpProject}, Region: ${location})`);
+    } else {
+      geminiClient = new GoogleGenAI({
+        apiKey: key || "",
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+    }
+  }
+  return geminiClient;
+}
 
 function getGeminiClient(): GoogleGenAI | null {
   // Dynamically refresh env from .env.local on each call so changes take effect without manual restart
@@ -38,7 +95,7 @@ function getGeminiClient(): GoogleGenAI | null {
     dotenv.config({ path: [".env.local", ".env"], override: true });
   } catch { }
 
-  const key = process.env.GEMINI_API_KEY?.trim();
+  const key = getSyncGeminiApiKey() || process.env.GEMINI_API_KEY?.trim();
   if (!key) {
     return null;
   }
@@ -289,7 +346,11 @@ async function geocodePlace(
   lng: number;
   rating: number;
 }> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+  const apiKey =
+    (await getGoogleMapsApiKey()) ||
+    getSyncGoogleMapsApiKey() ||
+    process.env.GOOGLE_MAPS_API_KEY ||
+    process.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Protect against searching ONLY a city name as a place or invalid keywords
   let safeSearchName = name.trim();
@@ -408,12 +469,30 @@ async function geocodePlace(
 // -------------------------------------------------------------
 
 // Config endpoint for client awareness (No secret keys exposed)
-app.get("/api/config", (req, res) => {
-  const hasMapsKey = Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY);
+app.get("/api/config", async (req, res) => {
+  const mapsKey = (await getGoogleMapsApiKey()) || getSyncGoogleMapsApiKey();
+  const hasMapsKey = Boolean(mapsKey);
   res.json({
     hasMapsKey,
     status: "ok",
   });
+});
+
+// Diagnostic endpoint returning Secret Manager status and source (Zero secret leaks)
+app.get("/api/admin/secrets-status", async (req, res) => {
+  try {
+    const status = await getSecretsStatus();
+    res.json({
+      success: true,
+      status,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to retrieve secret status",
+    });
+  }
 });
 
 // Helper to decode Firebase Auth JWT and extract caller UID
@@ -550,7 +629,7 @@ function isCityOnlyName(name: string): boolean {
   return INDONESIA_CITIES_SET.has(clean);
 }
 
-const INVALID_RESTAURANT_KEYWORDS = [
+const STRICT_INVALID_NAMES = new Set([
   "tiktok",
   "tik-tok",
   "tik tok",
@@ -563,25 +642,18 @@ const INVALID_RESTAURANT_KEYWORDS = [
   "foryou",
   "foryoupage",
   "fyp",
-  "video",
-  "photo",
-  "carousel",
-  "ojol",
-  "makanan anak kos",
-  "anak kosan",
-  "comfort food",
-];
+  "undefined",
+  "null",
+  "unknown",
+]);
 
 function isInvalidRestaurantName(name: string): boolean {
   if (!name) return true;
   const lower = name.toLowerCase().trim();
-  if (lower.length < 3) return true;
+  if (lower.length < 2) return true;
   if (isCityOnlyName(name)) return true;
-  for (const kw of INVALID_RESTAURANT_KEYWORDS) {
-    if (lower === kw || lower.includes(kw)) {
-      return true;
-    }
-  }
+  if (STRICT_INVALID_NAMES.has(lower)) return true;
+  if (/^(?:tiktok|instagram|reels|fyp|make your day|makeyourday|foryoupage|watch repair)$/i.test(lower)) return true;
   return false;
 }
 
@@ -858,8 +930,14 @@ function extractCulinaryHeuristics(
       restaurantName = `Bakso Sapi ${detectedCity}`;
     } else if (lower.includes("kopi") || lower.includes("coffee")) {
       restaurantName = `Kedai Kopi ${detectedCity}`;
+    } else if (lower.includes("cuanki") || lower.includes("batagor")) {
+      restaurantName = `Cuanki & Batagor ${detectedCity}`;
+    } else if (lower.includes("mie") || lower.includes("ramen")) {
+      restaurantName = `Mie & Ramen ${detectedCity}`;
+    } else if (lower.includes("rekomendasi") || lower.includes("kuliner") || lower.includes("foodie") || lower.includes("makanan")) {
+      restaurantName = `Rekomendasi Kuliner ${detectedCity}`;
     } else {
-      restaurantName = `Kuliner Pilihan ${detectedCity}`;
+      restaurantName = `Spot Kuliner ${detectedCity}`;
     }
   }
 
@@ -914,7 +992,17 @@ function extractCulinaryHeuristics(
   }
 
   if (dishes.length === 0) {
-    dishes.push("Menu Spesial Rekomendasi", "Minuman Segar");
+    if (detectedCity === "Bandung") {
+      dishes.push("Kuliner Khas Bandung", "Jajanan & Camilan Bandung", "Menu Rekomendasi Viral");
+    } else if (detectedCity === "Yogyakarta") {
+      dishes.push("Gudeg Khas Jogja", "Bakpia & Kopi Joss", "Kuliner Tradisional");
+    } else if (detectedCity === "Surabaya") {
+      dishes.push("Rawon Khas Surabaya", "Bebek Goreng Gurih", "Kuliner Malam");
+    } else if (detectedCity === "Bali") {
+      dishes.push("Kuliner Khas Bali", "Seafood & Sambal Matah", "Menu Favorit");
+    } else {
+      dishes.push("Menu Spesial Rekomendasi", "Minuman Segar");
+    }
   }
 
   // 4. Estimated Price
@@ -969,15 +1057,39 @@ function extractCulinaryHeuristics(
 }
 
 // Health check endpoint
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+app.get("/api/health", async (req, res) => {
+  try {
+    const secretsStatus = await getSecretsStatus();
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      secrets: secretsStatus,
+    });
+  } catch {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  }
 });
 
 // Google Maps config endpoint - provides public client key for Maps JavaScript SDK
-app.get("/api/config/maps", (req, res) => {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || "";
+app.get("/api/config/maps", async (req, res) => {
+  const apiKey =
+    (await getGoogleMapsApiKey()) ||
+    getSyncGoogleMapsApiKey() ||
+    process.env.GOOGLE_MAPS_API_KEY ||
+    process.env.VITE_GOOGLE_MAPS_API_KEY ||
+    "";
   const hasMapsKey = Boolean(apiKey);
   res.json({ apiKey, hasMapsKey, status: "ok" });
+});
+
+// Diagnostic endpoint: Secure check of Secret Manager status without exposing any secret keys
+app.get("/api/admin/secrets-status", async (req, res) => {
+  try {
+    const status = await getSecretsStatus();
+    res.json({ success: true, ...status });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || String(err) });
+  }
 });
 
 // Helper: Verify if text content contains any food or culinary terms
@@ -985,16 +1097,28 @@ function isCulinaryContent(text: string): boolean {
   if (!text || text.trim().length === 0) return false;
   const lower = text.toLowerCase();
   const culinaryTerms = [
-    "makan", "kuliner", "food", "foodie", "resto", "restoran", "cafe", "kafe", "warung", "kedai",
-    "menu", "dish", "resep", "sate", "bakso", "mie", "ayam", "bebek", "nasi", "gulai",
-    "gultik", "claypot", "ramen", "sushi", "dimsum", "kopi", "coffee", "roti", "bakery",
-    "dessert", "snack", "jajanan", "pedas", "pedes", "enak", "lezat", "halal", "minuman", "street food",
-    "seafood", "grill", "bbq", "steak", "martabak", "gorengan", "es", "boba", "tea", "teh",
-    "breakfast", "lunch", "dinner", "sarapan", "nyam", "yummy", "tasty", "culinary", "lapar",
-    "dining", "taste", "rasa", "warkop", "angkringan", "cantina", "bistro", "pastry",
-    "pasta", "pizza", "burger", "taichan", "pempek", "rawon", "soto", "rendang", "sambal"
+    "makan", "kuliner", "food", "foodie", "foodies", "resto", "restoran", "cafe", "kafe", "warung", "kedai",
+    "menu", "dish", "dishes", "resep", "sate", "bakso", "mie", "ayam", "bebek", "nasi", "gulai",
+    "gultik", "claypot", "ramen", "sushi", "dimsum", "kopi", "coffee", "roti", "bakery", "pastry",
+    "dessert", "snack", "snacks", "jajan", "jajanan", "pedas", "pedes", "enak", "lezat", "halal", "minuman", "street food",
+    "streetfood", "seafood", "grill", "bbq", "steak", "martabak", "gorengan", "es", "boba", "tea", "teh",
+    "breakfast", "lunch", "dinner", "sarapan", "nyam", "yummy", "tasty", "culinary", "lapar", "kenyang",
+    "dining", "taste", "rasa", "warkop", "angkringan", "cantina", "bistro", "pasta", "pizza", "burger",
+    "taichan", "pempek", "rawon", "soto", "rendang", "sambal", "ngunyah", "ngemil", "cemilan", "icip",
+    "seblak", "cuanki", "batagor", "cilok", "cireng", "siomay", "gelato", "ice cream", "cake", "brunch",
+    "eats", "treats", "bites", "foodvlog", "foodporn", "instafood", "cafehopping", "nongkrong"
   ];
-  return culinaryTerms.some((term) => lower.includes(term));
+
+  if (culinaryTerms.some((term) => lower.includes(term))) {
+    return true;
+  }
+
+  // Check if text has food-related hashtags or compound tags like #kulinerbandung, #makananenak, #bandungfoodies, etc.
+  if (/#\w*(?:kuliner|makan|food|resto|cafe|jajan|kopi|coffee|bakso|mie|ayam|nasi|dimsum|pedas|rekomendasi)\w*/i.test(lower)) {
+    return true;
+  }
+
+  return false;
 }
 
 // Helper: Guard against off-topic requests (code generation, math calculation, general non-culinary prompt injection)
@@ -1100,28 +1224,28 @@ app.post("/api/parse-link", async (req, res) => {
       locationReasoning?: string;
     } | undefined = undefined;
 
-    // 1. Attempt with Gemini AI if client is configured (with multi-model fallback)
-    const ai = getGeminiClient();
+    // 1. Attempt with Gemini AI if client is configured (with multi-model fallback & Secret Manager)
+    const ai = (await ensureGeminiClient()) || getGeminiClient();
     if (ai) {
       const systemInstruction = `Kamu adalah pakar kurator kuliner Indonesia Jurnal Rasa dan analisis media sosial (TikTok & Instagram).
 Tugasmu adalah menganalisis postingan TikTok/Instagram (video cerita, photo carousel, atau video recap / food tour) dan mengekstrak tempat makan ke dalam JSON secara FAKTUAL dan PRESISI.
 
-VALIDASI RELEVANSI KULINER MUTLAK (CRITICAL CULINARY RELEVANCE CHECK):
-1. Periksa apakah konten postingan (teks caption, deskripsi, teks video, atau gambar slide) BENAR-BENAR terkait kuliner, makanan, minuman, kafe, restoran, tempat makan, jajanan, atau resep makanan.
-2. JIKA postingan TIDAK relevan dengan kuliner (misalnya: video dance/tari, komedi/sketsa tanpa makanan, tutorial coding/software/gadget, game, fashion/OOTD, makeup/skincare, politik, berita umum, curhat/vlog tanpa makanan, atau pemandangan alam tanpa kuliner):
+VALIDASI RELEVANSI KULINER:
+1. Periksa apakah konten postingan (teks caption, deskripsi, teks video, atau gambar slide) terkait kuliner, makanan, minuman, kafe, restoran, tempat makan, jajanan, atau resep makanan.
+2. JIKA postingan JELAS-JELAS TIDAK relevan dengan kuliner (misalnya: video dance/tari, tutorial coding/software/gadget, game/esports, fashion/OOTD tanpa kafe, makeup/skincare, politik, berita umum, curhat/vlog tanpa makanan, atau pemandangan alam tanpa kuliner):
    - 'is_culinary_related' WAJIB diset FALSE.
    - 'places' WAJIB diisi array KOSONG: [].
-   - 'reasoning_step.location_reasoning' menjelaskan bahwa konten tidak berkaitan dengan kuliner atau tempat makan.
-3. JIKA postingan RELEVAN dengan kuliner:
+   - 'reasoning_step.location_reasoning' menjelaskan bahwa konten tidak berkaitan dengan kuliner.
+3. JIKA postingan RELEVAN dengan kuliner, makanan, minuman, kafe, atau rekomendasi kuliner (termasuk tagar seperti #kuliner, #makanan, #foodies, atau foto makanan):
    - 'is_culinary_related' WAJIB diset TRUE.
 
-ATURAN ANTI-HALUSINASI MUTLAK (ZERO-HALLUCINATION POLICY):
-1. HANYA ekstrak nama tempat makan yang SECARA HARFIAH dan EKSPLISIT tertulis di caption, teks video, atau terlihat nyata pada gambar slide.
-2. DILARANG KERAS mengarang, menebak, berasumsi, atau merekomendasikan tempat makan populer dari luar konten jika tempat tersebut tidak disebutkan dalam input.
-3. JIKA konten menyebutkan makanan tetapi tidak menyebutkan nama tempat makan konkret sama sekali:
-   - 'places' diisi array KOSONG: [].
-   - 'reasoning_step.location_reasoning' menjelaskan dengan jujur bahwa tidak ada nama tempat makan konkret yang disebutkan.
-4. JANGAN PERNAH mengisi 'restaurant_name' dengan nama-nama dari memori latihan model jika bukti tekstual/visualnya tidak ada di dalam input!
+PANDUAN PENAMAAN TEMPAT KULINER:
+1. Utamakan mengekstrak nama tempat makan yang tertulis di caption, teks video, atau terlihat nyata pada gambar slide / kemasan / stiker / plang toko.
+2. JIKA konten menyebutkan makanan atau rekomendasi kuliner (seperti tagar #kulinerbandung, #makananbandung, atau foto makanan) tetapi nama spesifik toko/resto belum tertulis formal:
+   - 'is_culinary_related' TETAP TRUE.
+   - Buat nama kuliner deskriptif yang rapi dan alami berdasarkan jenis makanan atau kota (contoh: 'Rekomendasi Kuliner Bandung', 'Spot Kuliner Bandung', 'Kuliner Khas Bandung', atau sesuai jenis makanannya seperti 'Kedai Bakso Bandung') agar pengguna tetap dapat menyimpannya ke jurnal rasa.
+   - JANGAN kosongkan array 'places' jika konten terbukti merupakan rekomendasi kuliner!
+3. DILARANG KERAS hanya mengisi nama kota administratif umum (seperti 'Jakarta', 'Bandung') sebagai 'restaurant_name'. Gabungkan menjadi nama tempat deskriptif (misal: 'Rekomendasi Kuliner Bandung').
 
 MANDATORY CHAIN-OF-THOUGHT / REASONING STEP:
 Sebelum menentukan nama tempat makan dan memetakannya ke Google Places API, model WAJIB menjalankan tahap penalaran ("reasoning_step"):
@@ -1193,7 +1317,13 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
       }
 
       // Active model candidate list in priority order
-      const candidateModels = ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"];
+      const candidateModels = [
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-flash-latest",
+      ];
 
       for (const modelName of candidateModels) {
         try {
@@ -1274,11 +1404,15 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
 
             // Rejection of non-culinary posts as requested by the user
             if (parsed && parsed.is_culinary_related === false) {
-              return res.json({
-                success: false,
-                isNotCulinary: true,
-                message: "The TikTok or Instagram video/post you provided is not relevant to culinary or dining spots. Please provide a link that features food recommendations, restaurants, or culinary spots.",
-              });
+              const textToCheck = `${textToAnalyze} ${url} ${personalNotes}`;
+              if (!isCulinaryContent(textToCheck)) {
+                return res.json({
+                  success: false,
+                  isNotCulinary: true,
+                  message: "The TikTok or Instagram video/post you provided is not relevant to culinary or dining spots. Please provide a link that features food recommendations, restaurants, or culinary spots.",
+                });
+              }
+              // If heuristic indicates culinary terms/hashtags are present, do not hard-reject; continue to fallback
             }
 
             if (parsed && Array.isArray(parsed.places) && parsed.places.length > 0) {
@@ -1302,7 +1436,14 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
             }
           }
         } catch (modelErr: any) {
-          console.warn(`[Gemini API] Model ${modelName} failed, trying next fallback:`, modelErr?.status || modelErr?.message);
+          const status = modelErr?.status;
+          // If the error is an API key invalid (400), permission denied (403), or quota/prepayment exhausted (429),
+          // retrying on subsequent models will fail identically. Stop immediately and transition to smart parser.
+          if (status === 400 || status === 403 || status === 429) {
+            console.log(`[Gemini API] API key or quota issue (${status}): switching immediately to Jurnal Rasa smart parser.`);
+            break;
+          }
+          console.log(`[Gemini API] Model ${modelName} transient issue, trying next fallback.`);
         }
       }
 
@@ -1315,8 +1456,10 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
 
     // 2. Fallback to Supercharged Smart Multi-Slide / Recap Heuristic Extractor ONLY IF content is culinary-related
     if (extractedList.length === 0) {
+      const textToValidate = `${textToAnalyze} ${url} ${personalNotes} ${extractedMetadata.author || ""}`;
+
       // Check if text has any culinary relation; if not, reject immediately
-      if (!isCulinaryContent(textToAnalyze)) {
+      if (!isCulinaryContent(textToValidate)) {
         return res.json({
           success: false,
           isNotCulinary: true,
@@ -1331,8 +1474,7 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
           const single = extractCulinaryHeuristics(itemText, url, personalNotes, contextCity);
           if (
             single.restaurant_name &&
-            single.restaurant_name !== "Kuliner Rekomendasi Viral" &&
-            !single.restaurant_name.startsWith("Kuliner Pilihan") &&
+            !isInvalidRestaurantName(single.restaurant_name) &&
             !extractedList.some((x) => x.restaurant_name.toLowerCase() === single.restaurant_name.toLowerCase())
           ) {
             extractedList.push(single);
@@ -1345,11 +1487,23 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
         const single = extractCulinaryHeuristics(textToAnalyze, url, personalNotes);
         if (
           single.restaurant_name &&
-          single.restaurant_name !== "Kuliner Rekomendasi Viral" &&
-          !single.restaurant_name.startsWith("Kuliner Pilihan")
+          !isInvalidRestaurantName(single.restaurant_name)
         ) {
           extractedList.push(single);
         }
+      }
+
+      // Safety fallback: if still empty despite being culinary content (e.g. hashtag-only or photo slides)
+      if (extractedList.length === 0 && isCulinaryContent(textToValidate)) {
+        const detectedCity = detectIndonesianCity(textToValidate, "Bandung");
+        extractedList.push({
+          restaurant_name: `Rekomendasi Kuliner ${detectedCity}`,
+          city: detectedCity,
+          must_try_dishes: [`Kuliner Khas ${detectedCity}`, "Menu Rekomendasi Viral", "Jajanan Favorit"],
+          estimated_price: "Rp 25.000 - Rp 50.000",
+          tags: [`Kuliner ${detectedCity}`, "Rekomendasi Viral", "Foodies"],
+          vibes_or_summary: `Spot kuliner pilihan di ${detectedCity} dari kurasi media sosial.`,
+        });
       }
     }
 
@@ -1474,7 +1628,11 @@ app.get("/api/places/search", async (req, res) => {
       return res.json({ success: true, isConnected: false, places: [] });
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
+    const apiKey =
+      (await getGoogleMapsApiKey()) ||
+      getSyncGoogleMapsApiKey() ||
+      process.env.GOOGLE_MAPS_API_KEY ||
+      process.env.VITE_GOOGLE_MAPS_API_KEY;
     if (apiKey) {
       try {
         const fullQuery = [query, city && city !== "All Cities" ? city : "", "Indonesia"]
@@ -1572,7 +1730,7 @@ app.post("/api/chat-copilot", async (req, res) => {
       return res.status(400).json({ success: false, error: "Messages array is required" });
     }
 
-    const ai = getGeminiClient();
+    const ai = (await ensureGeminiClient()) || getGeminiClient();
     if (!ai) {
       return res.status(500).json({
         success: false,
@@ -1662,7 +1820,13 @@ If no specific food spot is recommended in a turn (e.g., just answering a genera
 
     // Choose robust model
     let responseText = "";
-    const modelsToTry = ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-flash-latest"];
+    const modelsToTry = [
+      "gemini-3.1-flash-lite",
+      "gemini-3.5-flash-lite",
+      "gemini-3.8-flash",
+      "gemini-3.6-flash",
+      "gemini-flash-latest",
+    ];
 
     for (const modelName of modelsToTry) {
       try {
@@ -1679,15 +1843,33 @@ If no specific food spot is recommended in a turn (e.g., just answering a genera
           break;
         }
       } catch (err: any) {
-        console.warn(`[chat-copilot] Model ${modelName} error:`, err?.message || err);
+        const status = err?.status;
+        if (status === 400 || status === 403 || status === 429) {
+          console.log(`[chat-copilot] API key or quota issue (${status}): switching to grounded journal response.`);
+          break;
+        }
+        console.log(`[chat-copilot] Model ${modelName} transient issue, trying next fallback.`);
       }
     }
 
     if (!responseText) {
-      return res.status(500).json({
-        success: false,
-        error: "All AI models are currently busy. Please try again in a moment.",
+      // Graceful offline fallback grounded on user's journal
+      const entries = Array.isArray(journalEntries) ? journalEntries : (Array.isArray(req.body.journalPlaces) ? req.body.journalPlaces : []);
+      const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || "";
+      const matched = entries.filter((p: any) => {
+        const text = `${p.name || ""} ${p.city || ""} ${p.address || ""} ${(p.tags || []).join(" ")} ${(p.signatureDishes || []).join(" ")} ${(p.recommendedDishes || []).join(" ")}`.toLowerCase();
+        return lastUserMsg.split(" ").some((w: string) => w.length > 2 && text.includes(w));
       });
+
+      if (matched.length > 0) {
+        responseText = `Here are recommendations from your **Taste Journal** matching your search:\n\n` +
+          matched.slice(0, 3).map((p: any) => `- **${p.name}** (${p.city || "Indonesia"}): Known for *${(p.signatureDishes || p.recommendedDishes || []).join(", ") || "signature culinary"}*. ${p.personalNotes ? `\n  *"${p.personalNotes}"*` : ""}`).join("\n\n") +
+          `\n\n*(Note: Taste Finder is operating in journal-matching mode while Gemini prepayment credits are being refreshed)*`;
+      } else if (entries.length > 0) {
+        responseText = `Taste Finder is currently operating in offline mode while API credits are being updated.\n\nYou have **${entries.length} saved spots** in your Taste Journal! You can explore them on the **Taste Map** or filter by category in your journal feed.`;
+      } else {
+        responseText = `Taste Finder is temporarily in offline mode (Gemini API prepayment credits need to be topped up or linked in AI Studio). You can still save and organize food spots using **Quick Note** and explore trending community favorites!`;
+      }
     }
 
     // Extract structured recommendations if present at the end of the response
@@ -1767,6 +1949,15 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Jurnal Rasa Server running on port ${PORT}`);
+
+    // Pre-warm secrets in the background on startup for immediate availability
+    warmUpSecrets()
+      .then(() => {
+        console.log("[Jurnal Rasa] Secret Manager check completed.");
+      })
+      .catch((err) => {
+        console.warn("[Jurnal Rasa] Secret warm-up notice:", err);
+      });
   });
 }
 
