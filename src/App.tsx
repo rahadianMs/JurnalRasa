@@ -57,6 +57,76 @@ import {
   HelpCircle,
 } from "lucide-react";
 
+// Exclude testing leftovers and explicitly requested removals from Explore Taste
+const isExcludedFromExplore = (place: { placeId?: string; name?: string; saveCount?: number }) => {
+  const nameLower = (place.name || "").toLowerCase();
+  const idLower = (place.placeId || "").toLowerCase();
+
+  // 1. Remove Claypot Popo
+  if (nameLower.includes("claypot") || idLower.includes("claypot")) return true;
+
+  // 2. Remove Haraku Ramen & testing data
+  if (nameLower.includes("haraku") || idLower.includes("haraku")) return true;
+
+  // 3. Remove testing remnants with count (1) or low test save count (<= 2)
+  if (place.saveCount !== undefined && place.saveCount <= 2) return true;
+
+  // Explicit check for known test place IDs
+  if (
+    idLower.startsWith("chij1xyt") || // Bebek Carok Kemang
+    idLower.startsWith("chij3day") || // Sate Taichan BANG YOYO
+    idLower.startsWith("chij5cq") ||  // Ayam Blenger PSP
+    idLower.startsWith("chij6uro") || // Bebek Waluya
+    idLower.startsWith("chij70ve") || // Ayam Geybok Bang Jarwo
+    idLower.startsWith("chijiy6") ||  // Sate Taichan Mampang
+    idLower.startsWith("chijj4") ||   // Waroeng jegeg
+    idLower.startsWith("chijrzmv") || // SB - Cikajang
+    idLower.startsWith("chijt4") ||   // Rempha
+    idLower.startsWith("chijw0") ||   // Ikan Bakar Kawi
+    idLower.startsWith("chijwywf") || // MARTABAK IDOLA 2
+    idLower.startsWith("chij_7xw") || // Waras Warung Tradisional
+    idLower.startsWith("chijkx4v") || // Nasgero Cilandak
+    idLower.startsWith("chijl8et") || // Sushi Mate X
+    idLower.startsWith("chijm0f4") || // Dimsum Andria
+    idLower.startsWith("chijobru") || // Kenikmatan Duniawi
+    idLower.startsWith("chijpsra") || // Aburi Kitchen
+    idLower.startsWith("chijte1b") || // Bakso Tjap Haji
+    idLower.startsWith("chijv5ht") || // Bakmi Ayam Alung
+    idLower.startsWith("chijxsxi")    // Nasi Kuning Bangka
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+// Known test place document IDs to purge from Firestore
+const TEST_PLACE_IDS_TO_PURGE = [
+  "ChIJ77_claypot_popo",
+  "ChIJ_haraku_ramen_halal",
+  "ChIJi91k_53xaS4RUZ-Fqo7-kko",
+  "ChIJ1Xyt-qefeC4RJwxdDVjfewY",
+  "ChIJ3daY4hvzaS4Rig48bSAIDNI",
+  "ChIJ5cqQBsP2aS4RdJxc6wkMg5c",
+  "ChIJ6UroHn_naC4RGaYiDLcHlN0",
+  "ChIJ70vEgqz3aS4RIKnzW_K_Xkw",
+  "ChIJIy6-1uDzaS4RXJgsduPJFGs",
+  "ChIJJ4_TQQDzaS4RuahaQ5A87q0",
+  "ChIJRzmvImfxaS4Rsr-9u4Mml8k",
+  "ChIJT4-5lk7naC4RgmEw2QyKbyU",
+  "ChIJW0_p-Q-DeC4RsDi0CdBzZyg",
+  "ChIJWYwfKCb3aS4RAmCSL8yHGuE",
+  "ChIJ_7xw7b7zaS4R2-uM7EOBBn8",
+  "ChIJkx4VaT_xaS4RXxX-LhH1EfE",
+  "ChIJl8EToUL1aS4ROuSNNl_WkCg",
+  "ChIJm0f4ZCb3aS4R3SKo-xtNtX8",
+  "ChIJobRUF0HnaC4RgCCl2VyiZOs",
+  "ChIJpSraW8v1aS4RIW0WRo3GIgc",
+  "ChIJte1b8g7naC4RZV5cdetd2wc",
+  "ChIJv5Htt2n2aS4RGV3sxGpKlqU",
+  "ChIJxzsXiS3zaS4RSi3kP9gJVrA",
+];
+
 export default function App() {
   // State
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -139,21 +209,54 @@ export default function App() {
         (snapshot) => {
           if (!snapshot.empty) {
             const places: PublicPlace[] = [];
+            const existingIds = new Set<string>();
             snapshot.forEach((docSnap) => {
               const data = docSnap.data() as PublicPlace;
+              const placeId = docSnap.id;
+
+              // Filter out testing data, Haraku Ramen, Claypot Popo, and test remnants with (1)
+              if (isExcludedFromExplore({ placeId, name: data.name, saveCount: data.saveCount })) {
+                return;
+              }
+
+              existingIds.add(placeId);
+              const match = INITIAL_PUBLIC_PLACES.find(
+                (p) => p.placeId === placeId || p.name.toLowerCase() === data.name?.toLowerCase()
+              );
               let sourceUrl = data.sourceUrl || "";
               if (!sourceUrl) {
-                const match = INITIAL_PUBLIC_PLACES.find(
-                  (p) => p.placeId === docSnap.id || p.name.toLowerCase() === data.name?.toLowerCase()
-                );
                 sourceUrl = match?.sourceUrl || `https://www.tiktok.com/search?q=${encodeURIComponent(`${data.name || ""} ${data.city || ""}`)}`;
               }
-              places.push({ ...(data as PublicPlace), placeId: docSnap.id, sourceUrl });
+              const vibesOrSummary = match?.vibesOrSummary || data.vibesOrSummary;
+              places.push({ ...(data as PublicPlace), placeId, sourceUrl, vibesOrSummary });
             });
-            setPublicPlaces(places);
+
+            // Automatically seed any of the curated INITIAL_PUBLIC_PLACES not yet in Firestore
+            INITIAL_PUBLIC_PLACES.forEach(async (initPlace) => {
+              if (!existingIds.has(initPlace.placeId) && !isExcludedFromExplore(initPlace)) {
+                try {
+                  await setDoc(doc(db, "public_places", initPlace.placeId), {
+                    ...initPlace,
+                    lastUpdated: new Date().toISOString(),
+                  });
+                } catch {
+                  // ignore
+                }
+              }
+            });
+
+            // Merge any unseeded places into state so all curated Nusantara spots display instantly
+            const merged = [...places];
+            for (const initPlace of INITIAL_PUBLIC_PLACES) {
+              if (!existingIds.has(initPlace.placeId) && !isExcludedFromExplore(initPlace)) {
+                merged.push(initPlace);
+              }
+            }
+            setPublicPlaces(merged);
           } else {
             // Seed initial public places into Firestore with verified TikTok links
-            INITIAL_PUBLIC_PLACES.forEach(async (place) => {
+            const filteredInitial = INITIAL_PUBLIC_PLACES.filter((p) => !isExcludedFromExplore(p));
+            filteredInitial.forEach(async (place) => {
               try {
                 await setDoc(doc(db, "public_places", place.placeId), {
                   ...place,
@@ -163,20 +266,32 @@ export default function App() {
                 // ignore
               }
             });
-            setPublicPlaces(INITIAL_PUBLIC_PLACES);
+            setPublicPlaces(filteredInitial);
           }
         },
         (error) => {
           console.warn("Firestore public places listener error, using local fallback:", error);
-          setPublicPlaces(INITIAL_PUBLIC_PLACES);
+          setPublicPlaces(INITIAL_PUBLIC_PLACES.filter((p) => !isExcludedFromExplore(p)));
         }
       );
       return () => unsubscribe();
     } catch (err) {
       console.warn("Firestore init warning:", err);
-      setPublicPlaces(INITIAL_PUBLIC_PLACES);
+      setPublicPlaces(INITIAL_PUBLIC_PLACES.filter((p) => !isExcludedFromExplore(p)));
     }
   }, []);
+
+  // Cleanup test documents and excluded places (Claypot, Haraku, testing leftovers) from Firestore when authenticated
+  useEffect(() => {
+    if (!user || user.isAnonymous) return;
+    TEST_PLACE_IDS_TO_PURGE.forEach(async (id) => {
+      try {
+        await deleteDoc(doc(db, "public_places", id));
+      } catch {
+        // ignore
+      }
+    });
+  }, [user]);
 
   // 3. Firestore User Private Places live listener (strictly isolated per userId)
   useEffect(() => {
@@ -783,6 +898,11 @@ export default function App() {
     const list = mode === "my_radar" ? myPlaces : publicPlaces;
 
     return list.filter((p) => {
+      // In Explore Taste (community mode), strictly guarantee excluded places never show
+      if (mode === "community_pulse" && isExcludedFromExplore(p)) {
+        return false;
+      }
+
       // City filter
       if (selectedCity !== "All Cities" && !p.city.toLowerCase().includes(selectedCity.toLowerCase())) {
         return false;
@@ -822,8 +942,13 @@ export default function App() {
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#FFFDF7] flex flex-col items-center justify-center p-6 text-center font-sans">
-        <div className="w-14 h-14 rounded-2xl bg-[#FF5533] border-[3px] border-[#18181B] shadow-[4px_4px_0px_#18181B] flex items-center justify-center text-white mb-4 animate-bounce">
-          <Sparkles className="w-8 h-8 stroke-[2.5]" />
+        <div className="w-16 h-16 rounded-2xl bg-[#FFFDF7] border-[3px] border-[#18181B] shadow-[4px_4px_0px_#18181B] overflow-hidden flex items-center justify-center p-1 mb-4 animate-bounce">
+          <img
+            src="/brand/jr-logo-minimal-cute-v4.png"
+            alt="Jurnal Rasa"
+            className="w-full h-full object-contain"
+            referrerPolicy="no-referrer"
+          />
         </div>
         <h2 className="text-xl font-black font-display text-[#18181B]">Jurnal Rasa</h2>
         <p className="text-xs text-[#71716E] font-mono-code font-bold mt-1">
@@ -910,6 +1035,7 @@ export default function App() {
             availableCities={CITIES}
             availableTags={POPULAR_TAGS}
             onSavePlace={handleSavePlaceFromAI}
+            onOpenArchInfo={() => setIsInfoModalOpen(true)}
           />
         )}
 
@@ -1029,14 +1155,6 @@ export default function App() {
                   <option value="rating">⭐ Highest Rated</option>
                   <option value="latest">🕒 Newest</option>
                 </select>
-
-                <button
-                  onClick={() => setIsInfoModalOpen(true)}
-                  title="Jurnal Rasa Architecture Information"
-                  className="p-2 text-[#18181B] hover:bg-[#FEF08A] bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 shrink-0"
-                >
-                  <Info className="w-4 h-4 stroke-[2.5]" />
-                </button>
               </div>
             </div>
 
@@ -1120,9 +1238,14 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#FFFDF7] rounded-2xl sm:rounded-3xl shadow-[7px_7px_0px_#18181B] border-[3px] border-[#18181B] w-full max-w-md p-6 space-y-5">
             <div className="flex items-center justify-between border-b-2 border-[#18181B] pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-[#FEF08A] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] flex items-center justify-center font-black">
-                  <LogIn className="w-4 h-4 stroke-[2.5]" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#FFFDF7] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] overflow-hidden flex items-center justify-center p-0.5">
+                  <img
+                    src="/brand/jr-logo-minimal-cute-v4.png"
+                    alt="Jurnal Rasa Logo"
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
                 <div>
                   <h3 className="text-base font-black font-display text-[#18181B]">Sign In to Jurnal Rasa</h3>
@@ -1186,9 +1309,14 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-[#FFFDF7] rounded-2xl sm:rounded-3xl shadow-[8px_8px_0px_#18181B] border-[3px] border-[#18181B] w-full max-w-xl max-h-[85vh] overflow-y-auto p-6 space-y-4">
             <div className="flex items-center justify-between border-b-2 border-[#18181B] pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-[#FEF08A] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] flex items-center justify-center font-black">
-                  <Layers className="w-4 h-4 stroke-[2.5]" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#FFFDF7] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] overflow-hidden flex items-center justify-center p-0.5">
+                  <img
+                    src="/brand/jr-logo-minimal-cute-v4.png"
+                    alt="Jurnal Rasa Logo"
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
                 <div>
                   <h3 className="text-base font-black font-display text-[#18181B]">Jurnal Rasa Architecture</h3>

@@ -30,24 +30,11 @@ interface FoodMapProps {
   userSavedPlaceIds: Set<string>;
 }
 
-// Popular Indonesian culinary city centers for quick navigation
-const CITIES = [
-  { name: "All", lat: -6.2297, lng: 106.8295, zoom: 11 },
-  { name: "Jakarta", lat: -6.2297, lng: 106.8295, zoom: 12 },
-  { name: "Bandung", lat: -6.9175, lng: 107.6191, zoom: 13 },
-  { name: "Surabaya", lat: -7.2575, lng: 112.7521, zoom: 13 },
-  { name: "Yogyakarta", lat: -7.7956, lng: 110.3695, zoom: 13 },
-  { name: "Bali", lat: -8.65, lng: 115.2167, zoom: 11 },
-];
-
-/**
- * Subcomponent to handle programmatic camera pan/zoom inside Google Maps context
- */
+// Camera controller to smoothly pan/zoom on place selection or places change
 const MapCameraController: React.FC<{
   selectedPlace: (PublicPlace | UserSavedPlace) | null;
-  activeCityTarget: { lat: number; lng: number; zoom: number } | null;
   places: (PublicPlace | UserSavedPlace)[];
-}> = ({ selectedPlace, activeCityTarget, places }) => {
+}> = ({ selectedPlace, places }) => {
   const map = useMap();
   const prevSelectedIdRef = useRef<string | null>(null);
 
@@ -61,12 +48,14 @@ const MapCameraController: React.FC<{
     }
   }, [map, selectedPlace]);
 
-  // Pan when user clicks quick city jump button
+  // When filtered places change and no place is specifically selected, center on available spots
   useEffect(() => {
-    if (!map || !activeCityTarget) return;
-    map.panTo({ lat: activeCityTarget.lat, lng: activeCityTarget.lng });
-    map.setZoom(activeCityTarget.zoom);
-  }, [map, activeCityTarget]);
+    if (!map || selectedPlace || !places || places.length === 0) return;
+    if (places.length === 1 && places[0].lat && places[0].lng) {
+      map.panTo({ lat: places[0].lat, lng: places[0].lng });
+      map.setZoom(13);
+    }
+  }, [map, places, selectedPlace]);
 
   return null;
 };
@@ -83,12 +72,6 @@ export const FoodMap: React.FC<FoodMapProps> = ({
 }) => {
   const [apiKey, setApiKey] = useState<string>("");
   const [isLoadingKey, setIsLoadingKey] = useState<boolean>(true);
-  const [activeCity, setActiveCity] = useState("All");
-  const [activeCityTarget, setActiveCityTarget] = useState<{
-    lat: number;
-    lng: number;
-    zoom: number;
-  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -102,11 +85,6 @@ export const FoodMap: React.FC<FoodMapProps> = ({
       isMounted = false;
     };
   }, []);
-
-  const handleCityJump = (city: (typeof CITIES)[0]) => {
-    setActiveCity(city.name);
-    setActiveCityTarget({ lat: city.lat, lng: city.lng, zoom: city.zoom });
-  };
 
   const handleClose = () => {
     if (onClose) {
@@ -177,7 +155,6 @@ export const FoodMap: React.FC<FoodMapProps> = ({
             >
               <MapCameraController
                 selectedPlace={selectedPlace}
-                activeCityTarget={activeCityTarget}
                 places={places}
               />
 
@@ -245,23 +222,6 @@ export const FoodMap: React.FC<FoodMapProps> = ({
         </APIProvider>
       )}
 
-      {/* City Quick Jumper Bar (Top Right) */}
-      <div className="absolute top-3 right-3 z-10 hidden sm:flex items-center gap-1.5 bg-[#FFFDF7] p-1.5 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B]">
-        {CITIES.map((c) => (
-          <button
-            key={c.name}
-            onClick={() => handleCityJump(c)}
-            className={`px-2.5 py-1 text-[11px] font-black rounded-lg border transition-all cursor-pointer ${
-              activeCity === c.name
-                ? "bg-[#FEF08A] text-[#18181B] border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B]"
-                : "bg-white text-[#52525B] border-transparent hover:border-[#18181B] hover:text-[#18181B]"
-            }`}
-          >
-            {c.name}
-          </button>
-        ))}
-      </div>
-
       {/* Mode Indicator Badge (Top Left) */}
       <div className="absolute top-3 left-3 z-10 bg-[#FFFDF7] px-3 py-1.5 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] text-xs font-black text-[#18181B] flex items-center gap-2 pointer-events-none font-mono-code">
         {mode === "my_radar" ? (
@@ -279,7 +239,7 @@ export const FoodMap: React.FC<FoodMapProps> = ({
 
       {/* Selected Place Floating Drawer Card */}
       {selectedPlace && (
-        <div className="absolute bottom-4 left-3 right-3 sm:left-6 sm:right-auto sm:max-w-sm z-20 bg-[#FFFDF7] rounded-2xl p-4 shadow-[5px_5px_0px_#18181B] border-[2.5px] border-[#18181B] transition-all">
+        <div className="absolute bottom-3 left-2.5 right-2.5 sm:bottom-4 sm:left-6 sm:right-auto sm:max-w-sm z-20 bg-[#FFFDF7] rounded-2xl p-3.5 sm:p-4 shadow-[4px_4px_0px_#18181B] sm:shadow-[5px_5px_0px_#18181B] border-[2.5px] border-[#18181B] max-h-[85%] overflow-y-auto transition-all">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 pr-1">
               <div className="flex items-center gap-1.5 flex-wrap">

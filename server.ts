@@ -431,18 +431,49 @@ function getAuthUid(req: express.Request): string | null {
   return null;
 }
 
-// Strict SSRF protection allowlist for social media scraping
+// Strict text sanitizer for user input (anti-XSS, anti-injection, strip control characters)
+function sanitizeTextContent(raw: unknown, maxLength: number = 3000): string {
+  if (typeof raw !== "string") return "";
+  return raw
+    .replace(/<[^>]*>?/gm, "") // Strip any HTML/XML tags
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // Strip non-printable ASCII control characters
+    .trim()
+    .slice(0, maxLength);
+}
+
+// Strict SSRF protection and domain allowlist for social media scraping
 function isValidSocialMediaUrl(rawUrl: string): boolean {
   try {
-    const parsed = new URL(rawUrl.trim());
+    if (!rawUrl || typeof rawUrl !== "string") return false;
+    const trimmed = rawUrl.trim();
+
+    // Max length check to prevent DoS
+    if (trimmed.length > 2048) return false;
+
+    // Disallow dangerous URI schemes and invalid characters immediately
+    if (
+      /^(javascript|data|vbscript|file|about|blob|ftp|mailto):/i.test(trimmed) ||
+      /[<>"'{}\x00-\x1F\x7F]/.test(trimmed)
+    ) {
+      return false;
+    }
+
+    let urlToParse = trimmed;
+    if (!/^https?:\/\//i.test(urlToParse)) {
+      urlToParse = "https://" + urlToParse;
+    }
+
+    const parsed = new URL(urlToParse);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
     const hostname = parsed.hostname.toLowerCase();
 
-    // Disallow loopback, private RFC1918 ranges, and cloud metadata services
+    // Disallow loopback, private RFC1918 ranges, cloud metadata services, and direct IP addresses
     if (
       hostname === "localhost" ||
       hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
       hostname === "::1" ||
+      hostname === "169.254.169.254" ||
       hostname.startsWith("192.168.") ||
       hostname.startsWith("10.") ||
       hostname.startsWith("172.16.") ||
@@ -451,7 +482,8 @@ function isValidSocialMediaUrl(rawUrl: string): boolean {
       hostname.startsWith("172.19.") ||
       hostname.startsWith("172.2") ||
       hostname.startsWith("172.3") ||
-      hostname === "169.254.169.254"
+      /^[0-9.]+$/.test(hostname) || // Raw IPv4 address
+      hostname.includes(":") // Raw IPv6 address
     ) {
       return false;
     }
@@ -462,6 +494,7 @@ function isValidSocialMediaUrl(rawUrl: string): boolean {
       "vm.tiktok.com",
       "t.tiktok.com",
       "instagram.com",
+      "instagr.am",
       "ig.me",
     ];
 
@@ -945,17 +978,21 @@ app.get("/api/config/maps", (req, res) => {
 // Endpoint: Parse Link or Caption with Gemini AI / Smart Recaps (multi-slide & multi-place capable)
 app.post("/api/parse-link", async (req, res) => {
   try {
-    const { url = "", caption = "", personalNotes = "" } = req.body;
+    const rawUrl = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+    const rawCaption = sanitizeTextContent(req.body?.caption, 4000);
+    const rawPersonalNotes = sanitizeTextContent(req.body?.personalNotes, 1000);
+    const personalNotes = rawPersonalNotes;
 
-    // SEC-06: Reject disallowed or private network targets
-    if (url && !isValidSocialMediaUrl(url)) {
+    // SEC-06: Strict validation against SSRF, dangerous protocols, non-social domains
+    if (rawUrl && !isValidSocialMediaUrl(rawUrl)) {
       return res.status(400).json({
         success: false,
-        message: "Tautan tidak valid. Hanya tautan publik dari TikTok dan Instagram yang didukung.",
+        message: "Tautan tidak valid. Hanya tautan publik resmi dari TikTok (tiktok.com, vt.tiktok.com) dan Instagram (instagram.com/reel, /p) yang didukung.",
       });
     }
 
-    let textToAnalyze = caption?.trim() || "";
+    const url = rawUrl;
+    let textToAnalyze = rawCaption;
     let extractedMetadata: {
       title?: string;
       author?: string;
@@ -1084,8 +1121,8 @@ PANDUAN EKSTRAKSI SLIDE FOTO CAROUSEL (${imageParts.length} GAMBAR SLIDE):
         }
       }
 
-      // Model candidate list in priority order
-      const candidateModels = ["gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
+      // Model candidate list in priority order: Gemini 2.5 Flash (highly stable & reliable) -> Gemini Flash Latest -> Gemini 3.1 Flash Lite
+      const candidateModels = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
 
       for (const modelName of candidateModels) {
         try {
@@ -1484,7 +1521,7 @@ If no specific food spot is recommended in a turn (e.g., just answering a genera
 
     // Choose robust model
     let responseText = "";
-    const modelsToTry = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash"];
+    const modelsToTry = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
 
     for (const modelName of modelsToTry) {
       try {

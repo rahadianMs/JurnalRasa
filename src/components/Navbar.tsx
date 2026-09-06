@@ -40,7 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   communityCount,
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-[#FFFDF7] border-b-[2.5px] border-[#18181B]">
+    <header className="sticky top-0 z-50 bg-[#FFFDF7] border-b-[2.5px] border-[#18181B]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-18 gap-3">
           {/* Logo & Brand - Neo-Brutalist Food Notebook */}
@@ -48,8 +48,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => onTabChange("journal")}
             className="flex items-center gap-2.5 cursor-pointer group"
           >
-            <div className="w-10 h-10 rounded-xl bg-[#FF5533] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] flex items-center justify-center text-white transition-transform group-hover:-translate-x-0.5 group-hover:-translate-y-0.5 group-hover:shadow-[3.5px_3.5px_0px_#18181B] group-active:translate-x-0.5 group-active:translate-y-0.5 group-active:shadow-[1px_1px_0px_#18181B]">
-              <Compass className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-[#FFFDF7] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] overflow-hidden flex items-center justify-center p-0.5 transition-transform group-hover:-translate-x-0.5 group-hover:-translate-y-0.5 group-hover:shadow-[3.5px_3.5px_0px_#18181B] group-active:translate-x-0.5 group-active:translate-y-0.5 group-active:shadow-[1px_1px_0px_#18181B]">
+              <img
+                src="/brand/jr-logo-minimal-cute-v4.png"
+                alt="Jurnal Rasa Logo"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -138,10 +143,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </span>
                     <button
                       onClick={onSignIn}
-                      className="text-xs font-black px-2.5 py-1 rounded-lg bg-[#BBF7D0] hover:bg-[#86efac] text-[#18181B] border border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] transition-transform hover:-translate-x-0.5"
+                      className="text-xs font-black px-2 sm:px-2.5 py-1 rounded-lg bg-[#BBF7D0] hover:bg-[#86efac] text-[#18181B] border border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 whitespace-nowrap cursor-pointer"
                       title="Save notes permanently to your Google account"
                     >
-                      Connect Google
+                      <span className="hidden sm:inline">Connect </span>Google
                     </button>
                   </div>
                 ) : (

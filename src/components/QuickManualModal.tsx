@@ -162,26 +162,32 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
         }
       }
 
-      const dishList = dishes
+      // Sanitize inputs
+      const cleanName = name.replace(/<[^>]*>?/gm, "").replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 150);
+      const cleanAddress = finalAddress.replace(/<[^>]*>?/gm, "").replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 300);
+      const cleanDishes = dishes.replace(/<[^>]*>?/gm, "").replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 300);
+      const cleanNotes = notes.replace(/<[^>]*>?/gm, "").replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 1000);
+
+      const dishList = cleanDishes
         .split(",")
         .map((d) => d.trim())
         .filter(Boolean);
 
       const newPlace: UserSavedPlace = {
         placeId: placeId || "manual_" + Date.now().toString(36),
-        name: name.trim(),
+        name: cleanName,
         city,
-        address: finalAddress,
+        address: cleanAddress,
         lat,
         lng,
         rating: connectedPlace?.rating || 4.5,
         tasteRating: rating,
         recommendedDishes: dishList.length > 0 ? dishList : ["Menu Andalan"],
         tags: connectedPlace ? ["Google Maps", "Catatan Rasa"] : ["Manual Entry", "Catatan Rasa"],
-        personalNotes: notes.trim(),
+        personalNotes: cleanNotes,
         visited,
         savedAt: new Date().toISOString(),
-        vibesOrSummary: notes.trim() || `Catatan rasa pribadi untuk ${name}`,
+        vibesOrSummary: cleanNotes || `Catatan rasa pribadi untuk ${cleanName}`,
       };
 
       onSave(newPlace);
@@ -201,26 +207,27 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[#FFFDF7] rounded-2xl sm:rounded-3xl max-w-lg w-full p-5 sm:p-6 border-[3px] border-[#18181B] shadow-[8px_8px_0px_#18181B] space-y-4 max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="bg-[#FFFDF7] rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 border-[2.5px] sm:border-[3px] border-[#18181B] shadow-[6px_6px_0px_#18181B] sm:shadow-[8px_8px_0px_#18181B] space-y-4 max-h-[94vh] sm:max-h-[92vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b-2 border-[#18181B] pb-3 bg-[#F7F4EA] -mx-5 -mt-5 sm:-mx-6 sm:-mt-6 p-4 sm:p-5 rounded-t-2xl sm:rounded-t-3xl">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[#FEF08A] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] flex items-center justify-center font-black">
-              <PenLine className="w-5 h-5 stroke-[2.5]" />
+        <div className="flex items-center justify-between border-b-2 border-[#18181B] pb-3 bg-[#F7F4EA] -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 p-3.5 sm:p-5 rounded-t-2xl sm:rounded-t-3xl">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#FEF08A] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] flex items-center justify-center font-black shrink-0">
+              <PenLine className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
             </div>
-            <div>
-              <h3 className="text-base font-black font-display text-[#18181B]">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-black font-display text-[#18181B]">
                 Quick Taste Note
               </h3>
-              <p className="text-xs text-[#52525B] font-handwriting">
+              <p className="text-[11px] sm:text-xs text-[#52525B] font-handwriting truncate sm:whitespace-normal">
                 Search places via Google Maps API for instant coordinate and address matching
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-[#18181B] bg-white hover:bg-[#FECDD3] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-lg transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 cursor-pointer"
+            className="w-9 h-9 sm:w-10 sm:h-10 min-w-[36px] min-h-[36px] flex items-center justify-center text-[#18181B] bg-white hover:bg-[#FECDD3] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-lg transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 cursor-pointer shrink-0 ml-2"
+            aria-label="Close Quick Taste Note Modal"
           >
             <X className="w-4 h-4 stroke-[3]" />
           </button>
@@ -249,7 +256,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                 onFocus={() => {
                   if (suggestions.length > 0) setShowSuggestions(true);
                 }}
-                placeholder="Type place name (e.g. Gultik Blok M, Haraku Ramen...)"
+                placeholder="Type place name (e.g. Gultik Blok M, Sate Padang Ajo Ramon...)"
                 className="w-full pl-9 pr-9 py-2.5 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
               />
               <Search className="w-4 h-4 text-[#71716E] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -441,18 +448,18 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
           </div>
 
           {/* Action buttons */}
-          <div className="pt-2 flex items-center justify-end gap-2 border-t-2 border-[#18181B]">
+          <div className="pt-2 flex flex-col-reverse sm:flex-row items-center justify-end gap-2 border-t-2 border-[#18181B]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-black text-[#18181B] hover:bg-[#F7F4EA] rounded-xl border border-transparent cursor-pointer"
+              className="w-full sm:w-auto min-h-[44px] px-4 py-2 text-xs sm:text-sm font-black text-[#18181B] hover:bg-[#F7F4EA] rounded-xl border border-transparent cursor-pointer text-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !name.trim()}
-              className="bg-[#FF5533] hover:bg-[#ff4420] disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer"
+              className="w-full sm:w-auto min-h-[44px] bg-[#FF5533] hover:bg-[#ff4420] disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {loading ? (
                 <span>Saving...</span>

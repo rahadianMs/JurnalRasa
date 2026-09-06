@@ -271,8 +271,17 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
   };
 
   const handleSend = async (textToSend?: string) => {
-    const messageText = (textToSend || input).trim();
-    if (!messageText || loading) return;
+    const raw = (textToSend || input).trim();
+    if (!raw || loading) return;
+
+    // Sanitize user message: strip script/HTML tags, control characters, max length 1000
+    const messageText = raw
+      .replace(/<[^>]*>?/gm, "")
+      .replace(/[\x00-\x1F\x7F]/g, "")
+      .trim()
+      .slice(0, 1000);
+
+    if (!messageText) return;
 
     const userMsgId = Date.now().toString();
     const userMessage: ChatMessage = {
@@ -730,12 +739,13 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask for similar dishes, explore new menus, or plan an itinerary..."
           disabled={loading}
-          className="flex-1 bg-white border-2 border-[#18181B] rounded-xl px-4 py-2.5 text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
+          maxLength={1000}
+          className="flex-1 bg-white border-2 border-[#18181B] rounded-xl px-3.5 sm:px-4 py-2.5 text-base sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
         />
         <button
           type="submit"
           disabled={!input.trim() || loading}
-          className="bg-[#FF5533] hover:bg-[#ff4420] disabled:opacity-50 text-white p-2.5 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 shrink-0 cursor-pointer"
+          className="min-w-[42px] min-h-[42px] sm:min-w-[44px] sm:min-h-[44px] bg-[#FF5533] hover:bg-[#ff4420] disabled:opacity-50 text-white p-2.5 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 shrink-0 cursor-pointer"
         >
           <Send className="w-4 h-4 stroke-[2.5]" />
           <span className="hidden sm:inline">Send</span>

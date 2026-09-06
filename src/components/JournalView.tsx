@@ -23,6 +23,7 @@ import {
   Flame,
   Compass,
   Link2,
+  Info,
 } from "lucide-react";
 import { UserSavedPlace, RecommendedTastePlace } from "../types";
 import { getGoogleMapsUrl } from "../lib/maps";
@@ -48,6 +49,7 @@ interface JournalViewProps {
   availableTags: string[];
   initialSubTab?: "places" | "chat";
   onSavePlace?: (place: RecommendedTastePlace) => Promise<void> | void;
+  onOpenArchInfo?: () => void;
 }
 
 export const JournalView: React.FC<JournalViewProps> = ({
@@ -70,6 +72,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
   availableTags,
   initialSubTab = "places",
   onSavePlace,
+  onOpenArchInfo,
 }) => {
   const [visitedFilter, setVisitedFilter] = useState<"all" | "wishlist" | "visited">("all");
   const [subTab, setSubTab] = useState<"places" | "chat">(initialSubTab);
@@ -158,6 +161,16 @@ export const JournalView: React.FC<JournalViewProps> = ({
               <PenLine className="w-4 h-4 stroke-[2.5]" />
               <span className="hidden sm:inline">Quick Note</span>
             </button>
+            {onOpenArchInfo && (
+              <button
+                onClick={onOpenArchInfo}
+                className="flex items-center justify-center p-2.5 bg-white hover:bg-[#FEF08A] text-[#18181B] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] rounded-xl text-xs sm:text-sm font-black transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[3.5px_3.5px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
+                title="Jurnal Rasa Architecture Information"
+                aria-label="Jurnal Rasa Architecture Information"
+              >
+                <Info className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            )}
           </div>
         </div>
 

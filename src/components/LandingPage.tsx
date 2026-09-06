@@ -76,11 +76,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   return (
     <div className="min-h-screen bg-[#F7F4EA] text-[#18181B] flex flex-col selection:bg-[#FF5533] selection:text-white">
       {/* Top Brand Bar */}
-      <header className="border-b-2 border-[#18181B] bg-[#FFFDF7] sticky top-0 z-30">
+      <header className="border-b-2 border-[#18181B] bg-[#FFFDF7] sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#FF5533] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] flex items-center justify-center text-white font-black text-lg">
-              JR
+            <div className="w-10 h-10 rounded-xl bg-[#FFFDF7] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] overflow-hidden flex items-center justify-center p-0.5">
+              <img
+                src="/brand/jr-logo-minimal-cute-v4.png"
+                alt="Jurnal Rasa Logo"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -207,22 +212,45 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         )}
 
         {/* Hero Section */}
-        <section className="relative bg-[#FFFDF7] border-[3px] border-[#18181B] rounded-3xl p-6 sm:p-10 shadow-[6px_6px_0px_#18181B] overflow-hidden">
-          {/* Notebook Pin Washi Tape Sticker */}
-          <div className="absolute -top-3 right-8 bg-[#FEF08A] text-[#18181B] text-[11px] font-black font-mono-code px-3 py-1 border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rotate-2 select-none uppercase tracking-wider">
+        <section className="relative bg-[#FFFDF7] border-[3px] border-[#18181B] rounded-3xl p-6 sm:p-10 shadow-[6px_6px_0px_#18181B]">
+          {/* Notebook Pin Washi Tape Sticker - Positioned on card border but below sticky navbar (z-10 < z-50) */}
+          <div className="absolute -top-3.5 right-6 sm:right-8 z-10 bg-[#FEF08A] text-[#18181B] text-[11px] font-black font-mono-code px-3.5 py-1 rounded-sm border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] rotate-2 select-none uppercase tracking-wider">
             ★ NUSANTARA EDITION
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-7 space-y-5">
-              <div className="inline-flex items-center gap-2 bg-[#BAE6FD] border-2 border-[#18181B] px-3 py-1 rounded-xl shadow-[2px_2px_0px_#18181B] text-xs font-black font-mono-code">
-                <Sparkles className="w-3.5 h-3.5 text-[#18181B]" />
-                <span>SMART SOCIAL MEDIA FOOD NOTEBOOK</span>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+            <div className="lg:col-span-7 flex flex-col justify-between space-y-5">
+              {/* Category Badge & Subheading */}
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div className="inline-flex items-center gap-2 bg-[#BAE6FD] border-2 border-[#18181B] px-3 py-1 rounded-xl shadow-[2px_2px_0px_#18181B] text-xs font-black font-mono-code">
+                  <Sparkles className="w-3.5 h-3.5 text-[#18181B]" />
+                  <span>SMART SOCIAL MEDIA FOOD NOTEBOOK</span>
+                </div>
+                <span className="text-xs sm:text-sm font-bold text-[#52525B] font-handwriting">
+                  TikTok & Reels Culinary Radar
+                </span>
               </div>
 
-              <h1 className="text-2xl sm:text-4xl lg:text-[42px] font-black font-display tracking-tight text-[#18181B] leading-[1.15]">
-                Turn Social Media Food Links into Your Personal Culinary Journal & Map
-              </h1>
+              {/* Large Brand Mascot Hook directly beside the Headline */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-6 pt-1">
+                <div className="relative group shrink-0">
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-2xl sm:rounded-3xl bg-[#FFFDF7] border-[3px] border-[#18181B] shadow-[5px_5px_0px_#18181B] p-2.5 flex items-center justify-center transition-all duration-300 group-hover:-rotate-3 group-hover:scale-105 group-hover:shadow-[7px_7px_0px_#18181B] cursor-pointer">
+                    <img
+                      src="/brand/jr-logo-minimal-cute-v4.png"
+                      alt="Jurnal Rasa Official Logo"
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <span className="absolute -bottom-2.5 -right-1.5 bg-[#FEF08A] text-[#18181B] text-[10px] font-black px-2 py-0.5 rounded-md border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] font-mono-code uppercase select-none tracking-wide">
+                    ★ Jurnal Rasa
+                  </span>
+                </div>
+
+                <h1 className="text-2xl sm:text-3xl lg:text-[38px] font-black font-display tracking-tight text-[#18181B] leading-[1.18] flex-1">
+                  Turn Social Media Food Links into Your Personal Culinary Journal & Map
+                </h1>
+              </div>
 
               <p className="text-sm sm:text-base text-[#52525B] leading-relaxed font-medium">
                 Always finding appetizing food spots on TikTok & Reels but forgetting their names? Paste the links here:
@@ -288,7 +316,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             {/* Interactive Preview Bento Card */}
-            <div className="lg:col-span-5 space-y-3">
+            <div className="lg:col-span-5 flex flex-col justify-between gap-3.5">
               {/* Preview 1: Taste Card */}
               <div className="p-4 bg-[#FFFDF7] rounded-2xl border-2 border-[#18181B] shadow-[4px_4px_0px_#18181B] space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -316,21 +344,44 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </p>
               </div>
 
-              {/* Preview 2: Taste Finder Snippet */}
-              <div className="p-4 bg-[#E0F2FE] rounded-2xl border-2 border-[#18181B] shadow-[4px_4px_0px_#18181B] space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-[#FF5533] border border-[#18181B] flex items-center justify-center text-white text-xs font-black">
-                    AI
+              {/* Preview 2: Taste Finder Snippet (Stretched proportionally to align with bottom of left cards) */}
+              <div className="flex-1 flex flex-col justify-between p-4 sm:p-5 bg-[#E0F2FE] rounded-2xl border-2 border-[#18181B] shadow-[4px_4px_0px_#18181B] space-y-3">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-[#FF5533] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] flex items-center justify-center text-white shrink-0">
+                        <Sparkles className="w-4 h-4 stroke-[2.5]" />
+                      </div>
+                      <div>
+                        <span className="text-xs sm:text-sm font-black text-[#18181B] font-display block leading-none">
+                          Taste Finder Copilot
+                        </span>
+                        <span className="text-[10px] text-[#52525B] font-mono-code font-bold">
+                          Personal Culinary AI
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono-code font-black px-2 py-0.5 rounded bg-[#FEF08A] text-[#18181B] border border-[#18181B]">
+                      AI ASSISTANT
+                    </span>
                   </div>
-                  <span className="text-xs font-black text-[#18181B] font-display">
-                    Taste Finder Copilot
-                  </span>
+
+                  <p className="text-xs sm:text-[13px] text-[#18181B] font-medium leading-relaxed bg-white/60 p-2.5 rounded-xl border border-[#18181B]/15">
+                    "Based on your saved places, you have options for savory street food at Barito or specialty coffee in Cilandak!"
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="text-[10px] font-bold bg-white text-[#18181B] px-2 py-0.5 rounded-md border border-[#18181B] shadow-[1px_1px_0px_#18181B]">
+                      🍲 Similar to Barito
+                    </span>
+                    <span className="text-[10px] font-bold bg-white text-[#18181B] px-2 py-0.5 rounded-md border border-[#18181B] shadow-[1px_1px_0px_#18181B]">
+                      ☕ Coffee Spots
+                    </span>
+                  </div>
                 </div>
-                <p className="text-xs text-[#18181B] font-medium leading-relaxed">
-                  "Based on your saved places, you have options for savory street food at Barito or specialty coffee in Cilandak!"
-                </p>
-                <div className="text-[10px] font-mono-code text-[#52525B] flex items-center gap-1 font-bold">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+
+                <div className="text-[10px] font-mono-code text-[#52525B] flex items-center gap-1.5 font-bold pt-2 border-t border-[#18181B]/15">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>Grounded strictly in your personal taste journal</span>
                 </div>
               </div>
