@@ -7,6 +7,32 @@
  * - Search: https://www.google.com/maps/search/?api=1&query=<query>&query_place_id=<place_id>
  */
 
+let cachedApiKey: string | null = null;
+
+export async function fetchGoogleMapsApiKey(): Promise<string> {
+  if (cachedApiKey) return cachedApiKey;
+  // 1. Check client-side Vite env
+  const envKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY;
+  if (envKey) {
+    cachedApiKey = envKey;
+    return envKey;
+  }
+  // 2. Fetch from server endpoint
+  try {
+    const res = await fetch("/api/config/maps");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.apiKey) {
+        cachedApiKey = data.apiKey;
+        return data.apiKey;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to fetch Google Maps API key:", err);
+  }
+  return "";
+}
+
 export function getGoogleMapsUrl(
   place: {
     name: string;

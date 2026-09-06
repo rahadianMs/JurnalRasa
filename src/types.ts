@@ -81,11 +81,32 @@ export type MapMode = "my_radar" | "community_pulse";
 
 export type AppTab = "journal" | "copilot" | "map" | "community";
 
+export interface RecommendedTastePlace {
+  name: string;
+  city: string;
+  address?: string;
+  signatureDish: string;
+  matchReason: string;
+  tags?: string[];
+  lat?: number;
+  lng?: number;
+  rating?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "model";
   content: string;
   timestamp: string;
+  suggestedPlaces?: RecommendedTastePlace[];
+}
+
+export interface ChatConversationMeta {
+  id: string;
+  summary: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
 }
 
 export interface FilterState {

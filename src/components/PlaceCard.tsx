@@ -6,7 +6,6 @@ import {
   Utensils,
   Tag,
   DollarSign,
-  ExternalLink,
   Trash2,
   BookmarkPlus,
   Navigation,
@@ -143,23 +142,6 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
             <Navigation className="w-3 h-3 text-[#FF5533]" />
             <span>Directions</span>
           </a>
-
-          {(() => {
-            const rawUrl = ("sourceUrl" in place && place.sourceUrl) ? place.sourceUrl : "";
-            const videoUrl = rawUrl || `https://www.tiktok.com/search?q=${encodeURIComponent(`${place.name} ${place.city}`)}`;
-            return (
-              <a
-                href={videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Open Original Video Review"
-                className="flex items-center gap-1 text-[11px] font-bold text-[#18181B] bg-[#BAE6FD] hover:bg-[#93c5fd] border-[1.5px] border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] px-2.5 py-1.5 rounded-lg transition-all"
-              >
-                <ExternalLink className="w-3 h-3" />
-                <span>Source</span>
-              </a>
-            );
-          })()}
         </div>
 
         <div className="flex items-center gap-1.5">

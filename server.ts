@@ -114,6 +114,10 @@ async function fetchSocialMetadata(url: string): Promise<{
 }> {
   try {
     let targetUrl = url.trim();
+    // SEC-06: Disallow non-social or private URLs
+    if (!isValidSocialMediaUrl(targetUrl)) {
+      throw new Error("Invalid or disallowed social media URL");
+    }
     // Follow redirect if shortlink like vt.tiktok.com or vm.tiktok.com or t.tiktok.com
     if (targetUrl.includes("vt.tiktok.com") || targetUrl.includes("vm.tiktok.com") || targetUrl.includes("t.tiktok.com")) {
       try {
@@ -398,15 +402,74 @@ async function geocodePlace(
 // API Endpoints
 // -------------------------------------------------------------
 
-// Config endpoint for client awareness
+// Config endpoint for client awareness (No secret keys exposed)
 app.get("/api/config", (req, res) => {
-  const mapsKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || "";
+  const hasMapsKey = Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY);
   res.json({
-    hasMapsKey: Boolean(mapsKey),
-    googleMapsKey: mapsKey,
+    hasMapsKey,
     status: "ok",
   });
 });
+
+// Helper to decode Firebase Auth JWT and extract caller UID
+function getAuthUid(req: express.Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.split(" ")[1]?.trim();
+  if (!token) return null;
+
+  try {
+    const parts = token.split(".");
+    if (parts.length === 3) {
+      const payloadJson = Buffer.from(parts[1], "base64").toString("utf-8");
+      const payload = JSON.parse(payloadJson);
+      return payload.user_id || payload.sub || null;
+    }
+  } catch (err) {
+    console.warn("Error decoding auth token payload:", err);
+  }
+  return null;
+}
+
+// Strict SSRF protection allowlist for social media scraping
+function isValidSocialMediaUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Disallow loopback, private RFC1918 ranges, and cloud metadata services
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("172.16.") ||
+      hostname.startsWith("172.17.") ||
+      hostname.startsWith("172.18.") ||
+      hostname.startsWith("172.19.") ||
+      hostname.startsWith("172.2") ||
+      hostname.startsWith("172.3") ||
+      hostname === "169.254.169.254"
+    ) {
+      return false;
+    }
+
+    const allowedDomains = [
+      "tiktok.com",
+      "vt.tiktok.com",
+      "vm.tiktok.com",
+      "t.tiktok.com",
+      "instagram.com",
+      "ig.me",
+    ];
+
+    return allowedDomains.some((d) => hostname === d || hostname.endsWith("." + d));
+  } catch {
+    return false;
+  }
+}
 
 // Helper to clean Indonesian restaurant / cafe name from social post text
 function cleanIndonesianPlaceName(raw: string): string {
@@ -872,16 +935,25 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Google Maps config endpoint
+// Google Maps config endpoint - provides public client key for Maps JavaScript SDK
 app.get("/api/config/maps", (req, res) => {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || "";
-  res.json({ apiKey });
+  const hasMapsKey = Boolean(apiKey);
+  res.json({ apiKey, hasMapsKey, status: "ok" });
 });
 
 // Endpoint: Parse Link or Caption with Gemini AI / Smart Recaps (multi-slide & multi-place capable)
 app.post("/api/parse-link", async (req, res) => {
   try {
     const { url = "", caption = "", personalNotes = "" } = req.body;
+
+    // SEC-06: Reject disallowed or private network targets
+    if (url && !isValidSocialMediaUrl(url)) {
+      return res.status(400).json({
+        success: false,
+        message: "Tautan tidak valid. Hanya tautan publik dari TikTok dan Instagram yang didukung.",
+      });
+    }
 
     let textToAnalyze = caption?.trim() || "";
     let extractedMetadata: {
@@ -1369,21 +1441,40 @@ app.post("/api/chat-copilot", async (req, res) => {
       .join("\n");
 
     const systemInstruction = `You are Taste Finder, the AI Culinary Copilot on Jurnal Rasa.
-Your mission is to help food lovers explore, plan, compare, and log their culinary adventures intelligently and delightfully.
+Your mission is to help food lovers explore, discover similar dishes, explore new menus based on their taste preferences, plan culinary trips, and seamlessly log their discoveries.
 
 CORE GUIDELINES:
-1. Always communicate in a friendly, enthusiastic, and foodie-savvy tone in ENGLISH by default (or seamlessly adapt if the user explicitly writes in Indonesian).
-2. Ground your answers primarily in the user's "PERSONAL TASTE JOURNAL" provided below whenever discussing places they have saved or want to try:
+1. Always communicate in a friendly, enthusiastic, and foodie-savvy tone in ENGLISH by default (or seamlessly adapt if the user writes in Indonesian).
+2. Deeply analyze the user's "PERSONAL TASTE JOURNAL" provided below:
 """
-${journalContextText || "The user has not saved any places in their taste journal yet. Politely suggest they save a spot from social media or use Catat Cepat via Google Maps!"}
+${journalContextText || "The user has not saved any places in their taste journal yet. Welcome them warmly and offer to recommend top culinary gems across Indonesia based on what flavors they enjoy!"}
 """
-3. Capabilities:
-   - Recommend dining spots from their journal based on city/neighborhood, vibe, craving, time of day, or budget.
-   - Design a realistic 1-day foodie itinerary from their wishlist.
-   - Compare signature dishes and specialties between spots in their journal.
-   - Offer creative culinary recommendations tailored to their taste preferences.
-4. Tone: Engaging, warm, knowledgeable, foodie-savvy.
-5. Formatting: Structure recommendations neatly with Markdown bullet points and bold restaurant/dish names. Avoid raw unrendered symbols.`;
+
+3. KEY CAPABILITIES:
+   - **Find Similar & Twin Dishes**: When asked for dishes similar to what they love (e.g., spicy sambals, beef stews, crispy textures, sate, bakso, specialty coffee, desserts), identify matching flavor profiles, cooking methods, or regional counterparts and recommend specific spots where they can taste them.
+   - **Explore New Menus Based on Taste**: Mine their taste notes and preferences to suggest exciting new culinary frontiers, signature regional dishes, and hidden gems that align with their palate.
+   - **Compare & Curate**: Compare dishes between spots in their journal or contrast them with famous viral spots.
+   - **Foodie Itineraries**: Plan realistic, delicious dining itineraries.
+
+4. STRUCTURED RECOMMENDATION CARDS FOR INSTANT SAVING:
+Whenever you recommend one or more specific culinary spots or restaurants that the user can visit or try, provide rich descriptions in your response, and AT THE VERY END of your response, append a valid JSON block containing an array of recommended places with this exact schema:
+\`\`\`json
+{
+  "recommendedPlaces": [
+    {
+      "name": "Exact Name of the Spot",
+      "city": "City Name (e.g. Jakarta, Bandung, Yogyakarta, Surabaya, Bali, etc.)",
+      "address": "Street or neighborhood if known",
+      "signatureDish": "Signature menu or dish to order",
+      "matchReason": "1 concise sentence explaining why it matches their taste profile",
+      "tags": ["Category", "Flavor Profile"]
+    }
+  ]
+}
+\`\`\`
+If no specific food spot is recommended in a turn (e.g., just answering a general question or greeting), you do not need to include the JSON block.
+
+5. Tone & Formatting: Engaging, appetizing, knowledgeable, and formatted with clean Markdown bullet points and bold restaurant/dish names.`;
 
     // Map client messages to Gemini contents format
     const contents = messages.map((m: any) => ({
@@ -1421,9 +1512,52 @@ ${journalContextText || "The user has not saved any places in their taste journa
       });
     }
 
+    // Extract structured recommendations if present at the end of the response
+    let suggestedPlaces: any[] = [];
+    let cleanReply = responseText;
+
+    const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?"recommendedPlaces"[\s\S]*?\})\s*```/i);
+    if (jsonMatch && jsonMatch[1]) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1]);
+        if (Array.isArray(parsed.recommendedPlaces)) {
+          suggestedPlaces = parsed.recommendedPlaces.filter(
+            (p: any) => p && typeof p.name === "string" && p.name.trim().length > 0
+          );
+          // Clean the raw JSON block from the user-facing markdown text
+          cleanReply = responseText.replace(jsonMatch[0], "").trim();
+        }
+      } catch (parseErr) {
+        console.warn("[chat-copilot] Failed to parse recommendation JSON block:", parseErr);
+      }
+    }
+
+    // Auto-generate conversation summary for multi-turn persistence
+    let autoSummary: string | null = null;
+    if (messages.length >= 1) {
+      try {
+        const lastUserMsg = messages[messages.length - 1]?.content || "";
+        const summaryPrompt = `Based on this interaction with Taste Finder AI, write a 1-sentence concise topic summary (max 15 words) describing what the user explored:
+User: ${lastUserMsg.slice(0, 200)}
+Taste Finder: ${cleanReply.slice(0, 200)}`;
+
+        const sumRes = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [{ role: "user", parts: [{ text: summaryPrompt }] }],
+        });
+        if (sumRes.text) {
+          autoSummary = sumRes.text.trim().replace(/^["']|["']$/g, "");
+        }
+      } catch (sumErr) {
+        console.warn("[chat-copilot] Auto-summary generation skipped:", sumErr);
+      }
+    }
+
     return res.json({
       success: true,
-      reply: responseText,
+      reply: cleanReply,
+      summary: autoSummary,
+      suggestedPlaces,
     });
   } catch (err: any) {
     console.error("[chat-copilot] Server error:", err);

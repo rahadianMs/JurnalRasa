@@ -219,20 +219,20 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-black font-display text-[#18181B] tracking-tight">
-                  Simpan dari Sosmed
+                  Quick Save
                 </h2>
                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#FF99C8] text-[#18181B] border border-[#18181B] font-mono-code uppercase">
                   TikTok & Instagram
                 </span>
               </div>
               <p className="text-xs text-[#52525B] font-medium font-handwriting">
-                Lagi scroll sosmed nemu tempat makan enak? Tempel link-nya di sini agar tersimpan rapi dan tidak lupa!
+                Found an amazing food spot on social media? Paste the link here to record it cleanly and never lose it!
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-[#18181B] bg-white hover:bg-[#FECDD3] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
+            className="p-2 text-[#18181B] bg-white hover:bg-[#FECDD3] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 cursor-pointer"
           >
             <X className="w-4 h-4 stroke-[3]" />
           </button>
@@ -246,7 +246,7 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
               {/* URL Input */}
               <div>
                 <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1.5 font-mono-code">
-                  Tautan Video TikTok atau Reels Instagram
+                  TikTok Video or Instagram Reels Link
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#18181B]">
@@ -258,19 +258,19 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
                     required
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder="Tempel link TikTok/IG di sini (cth: https://vt.tiktok.com/... atau https://instagram.com/reel/...)"
+                    placeholder="Paste TikTok/IG link here (e.g., https://vt.tiktok.com/... or https://instagram.com/reel/...)"
                     className="w-full pl-10 pr-4 py-3 bg-white border-2 border-[#18181B] rounded-xl text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
                   />
                 </div>
                 <p className="text-[11px] text-[#52525B] mt-1.5 font-medium">
-                  AI otomatis mendeteksi nama kuliner, rekomendasi menu, suasana tempat, dan titik alamat Google Maps.
+                  AI automatically extracts restaurant names, signature dishes, visual cues, and Google Maps coordinates.
                 </p>
               </div>
 
               {/* Personal Notes (Optional) */}
               <div>
                 <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1.5 font-mono-code">
-                  Catatan Rasa Pribadi (Opsional)
+                  Personal Taste Notes (Optional)
                 </label>
                 <div className="relative">
                   <div className="absolute top-3 left-3.5 text-[#18181B] pointer-events-none">
@@ -281,7 +281,7 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
                     rows={2}
                     value={personalNotes}
                     onChange={(e) => setPersonalNotes(e.target.value)}
-                    placeholder="Contoh: Wajib coba iga bakarnya, rencana ke sini weekend bareng teman..."
+                    placeholder="Example: Must try the beef ribs, planning to visit with friends this weekend..."
                     className="w-full pl-10 pr-3 py-2 bg-white border-2 border-[#18181B] rounded-xl text-xs text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
                   />
                 </div>
@@ -302,17 +302,17 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
                 id="btn-submit-ai-extract"
                 type="submit"
                 disabled={loading || !url.trim()}
-                className="w-full flex items-center justify-center gap-2 bg-[#FF5533] hover:bg-[#ff4420] disabled:bg-stone-300 text-white font-black py-3.5 px-4 rounded-xl text-sm border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_#18181B]"
+                className="w-full flex items-center justify-center gap-2 bg-[#FF5533] hover:bg-[#ff4420] disabled:bg-stone-300 text-white font-black py-3.5 px-4 rounded-xl text-sm border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_#18181B] cursor-pointer"
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Mengekstrak tempat via AI & mencocokkan Google Maps...</span>
+                    <span>Extracting spots with AI & matching on Google Maps...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 stroke-[2.5] text-yellow-300" />
-                    <span>Ekstrak & Simpan ke Jurnal Rasa</span>
+                    <span>Extract & Save to Jurnal Rasa</span>
                   </>
                 )}
               </button>

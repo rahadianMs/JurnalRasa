@@ -1,6 +1,6 @@
 {
   "name": "Jurnal Rasa",
-  "description": "Catatan kuliner pribadi & peta eksplorasi rasa dari media sosial dengan kurasi AI dan integrasi Google Maps.",
+  "description": "Personal culinary journal & interactive food radar from social media recommendations with AI extraction and Google Maps.",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

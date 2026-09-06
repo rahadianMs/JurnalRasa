@@ -211,16 +211,16 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black font-display text-[#18181B]">
-                Tambah Catatan Rasa
+                Quick Taste Note
               </h3>
               <p className="text-xs text-[#52525B] font-handwriting">
-                Cari tempat via Google Maps API agar koordinat & alamat terhubung langsung
+                Search places via Google Maps API for instant coordinate and address matching
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-[#18181B] bg-white hover:bg-[#FECDD3] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-lg transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
+            className="p-1.5 text-[#18181B] bg-white hover:bg-[#FECDD3] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-lg transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 cursor-pointer"
           >
             <X className="w-4 h-4 stroke-[3]" />
           </button>
@@ -232,7 +232,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
           <div className="relative" ref={dropdownRef}>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider font-mono-code">
-                Nama Tempat / Restoran *
+                Place / Restaurant Name *
               </label>
               <span className="text-[10px] font-bold text-[#FF5533] flex items-center gap-1 font-mono-code">
                 <Globe2 className="w-3 h-3 text-[#FF5533]" />
@@ -249,7 +249,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                 onFocus={() => {
                   if (suggestions.length > 0) setShowSuggestions(true);
                 }}
-                placeholder="Ketik nama tempat (contoh: Gultik Blok M, Haraku Ramen...)"
+                placeholder="Type place name (e.g. Gultik Blok M, Haraku Ramen...)"
                 className="w-full pl-9 pr-9 py-2.5 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
               />
               <Search className="w-4 h-4 text-[#71716E] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -267,10 +267,10 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                 <div className="px-3 py-1.5 bg-[#FEF08A] border-b-2 border-[#18181B] flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#18181B] font-mono-code flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-[#FF5533]" />
-                    Pilih Lokasi dari Google Maps
+                    Select Location from Google Maps
                   </span>
                   <span className="text-[9px] text-[#52525B] font-mono-code">
-                    {suggestions.length} hasil
+                    {suggestions.length} results
                   </span>
                 </div>
 
@@ -280,7 +280,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                       key={item.placeId}
                       type="button"
                       onClick={() => handleSelectSuggestion(item)}
-                      className="w-full text-left p-2.5 hover:bg-[#F7F4EA] transition-colors flex items-start gap-2.5 group"
+                      className="w-full text-left p-2.5 hover:bg-[#F7F4EA] transition-colors flex items-start gap-2.5 group cursor-pointer"
                     >
                       <div className="w-7 h-7 rounded-lg bg-[#BAE6FD] text-[#18181B] border border-[#18181B] flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform">
                         <MapPin className="w-3.5 h-3.5 text-[#18181B]" />
@@ -315,7 +315,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-black text-[#18181B]">
-                      Terhubung Google Maps
+                      Connected to Google Maps
                     </span>
                     <span className="text-[9px] font-mono-code font-black px-1.5 py-0.2 rounded bg-white text-[#18181B] border border-[#18181B]">
                       ⭐ {connectedPlace.rating}
@@ -325,15 +325,15 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                     {connectedPlace.address}
                   </p>
                   <p className="text-[10px] font-mono-code text-[#52525B] mt-0.5">
-                    Koordinat: {connectedPlace.lat.toFixed(4)}, {connectedPlace.lng.toFixed(4)}
+                    Coordinates: {connectedPlace.lat.toFixed(4)}, {connectedPlace.lng.toFixed(4)}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleDisconnect}
-                title="Lepas tautan Google Maps"
-                className="p-1 text-[#18181B] hover:bg-rose-100 rounded border border-transparent hover:border-[#18181B] shrink-0"
+                title="Disconnect Google Maps place"
+                className="p-1 text-[#18181B] hover:bg-rose-100 rounded border border-transparent hover:border-[#18181B] shrink-0 cursor-pointer"
               >
                 <Unlink className="w-3.5 h-3.5" />
               </button>
@@ -343,7 +343,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1 font-mono-code">
-                Kota / Wilayah
+                City / Area
               </label>
               <select
                 value={city}
@@ -360,30 +360,30 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
 
             <div>
               <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1 font-mono-code">
-                Status Kunjungan
+                Visit Status
               </label>
               <div className="flex items-center gap-1.5 pt-0.5">
                 <button
                   type="button"
                   onClick={() => setVisited(false)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black transition-all border-2 ${
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black transition-all border-2 cursor-pointer ${
                     !visited
                       ? "bg-[#FEF08A] text-[#18181B] border-[#18181B] shadow-[2px_2px_0px_#18181B]"
                       : "bg-white text-stone-600 border-[#18181B]/40"
                   }`}
                 >
-                  ⭐ Ingin Coba
+                  ⭐ Want to Try
                 </button>
                 <button
                   type="button"
                   onClick={() => setVisited(true)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black transition-all border-2 ${
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-black transition-all border-2 cursor-pointer ${
                     visited
                       ? "bg-[#BBF7D0] text-[#18181B] border-[#18181B] shadow-[2px_2px_0px_#18181B]"
                       : "bg-white text-stone-600 border-[#18181B]/40"
                   }`}
                 >
-                  ✅ Sudah Coba
+                  ✅ Tried
                 </button>
               </div>
             </div>
@@ -391,26 +391,26 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
 
           <div>
             <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1 font-mono-code">
-              Menu Andalan / Rekomendasi Makanan
+              Signature Dishes / Recommended Items
             </label>
             <input
               type="text"
               value={dishes}
               onChange={(e) => setDishes(e.target.value)}
-              placeholder="Pisahkan dengan koma (contoh: Sate Ayam Madura, Es Jeruk Nipis)"
+              placeholder="Comma separated (e.g. Grilled Ribs, Lime Tea, Beef Soup)"
               className="w-full px-3.5 py-2.5 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1 font-mono-code">
-              Catatan Rasa Pribadi (Taste Notes)
+              Personal Taste Notes
             </label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tulis ulasan rasa, suasana, tips parkir, atau alasan rekomendasi teman..."
+              placeholder="Write flavor reviews, vibes, parking tips, or why your friend recommended it..."
               className="w-full px-3.5 py-2 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
             />
           </div>
@@ -418,7 +418,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
           {/* Rating */}
           <div>
             <label className="block text-xs font-black text-[#18181B] uppercase tracking-wider mb-1 font-mono-code">
-              Rating Rasa Pribadi: {rating} / 5
+              Personal Taste Rating: {rating} / 5
             </label>
             <div className="flex items-center gap-1.5">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -426,7 +426,7 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
                   key={star}
                   type="button"
                   onClick={() => setRating(star)}
-                  className="p-1 hover:scale-110 transition-transform"
+                  className="p-1 hover:scale-110 transition-transform cursor-pointer"
                 >
                   <Star
                     className={`w-6 h-6 stroke-[2] ${
@@ -445,21 +445,21 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-black text-[#18181B] hover:bg-[#F7F4EA] rounded-xl border border-transparent"
+              className="px-4 py-2 text-xs font-black text-[#18181B] hover:bg-[#F7F4EA] rounded-xl border border-transparent cursor-pointer"
             >
-              Batal
+              Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !name.trim()}
-              className="bg-[#FF5533] hover:bg-[#ff4420] disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5"
+              className="bg-[#FF5533] hover:bg-[#ff4420] disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 flex items-center gap-1.5 cursor-pointer"
             >
               {loading ? (
-                <span>Menyimpan...</span>
+                <span>Saving...</span>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 stroke-[3]" />
-                  <span>Simpan ke Jurnal Rasa</span>
+                  <span>Save to Jurnal Rasa</span>
                 </>
               )}
             </button>

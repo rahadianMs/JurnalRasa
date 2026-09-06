@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   APIProvider,
   Map,
@@ -6,71 +6,67 @@ import {
   useMap,
 } from "@vis.gl/react-google-maps";
 import { PublicPlace, UserSavedPlace, MapMode } from "../types";
-import { getGoogleMapsUrl } from "../lib/maps";
+import { getGoogleMapsUrl, fetchGoogleMapsApiKey } from "../lib/maps";
 import {
-  MapPin,
-  Navigation,
   Utensils,
   Star,
   Flame,
-  ExternalLink,
   BookmarkPlus,
   Trash2,
-  Bookmark,
-  Loader2,
+  Navigation,
+  MapPin,
+  RefreshCw,
+  X,
 } from "lucide-react";
 
 interface FoodMapProps {
   mode: MapMode;
   places: (PublicPlace | UserSavedPlace)[];
   selectedPlace: (PublicPlace | UserSavedPlace) | null;
-  onSelectPlace: (place: PublicPlace | UserSavedPlace) => void;
+  onSelectPlace: (place: PublicPlace | UserSavedPlace | null) => void;
+  onClose?: () => void;
   onSaveToMyRadar?: (place: PublicPlace) => void;
   onDelete?: (placeId: string) => void;
   userSavedPlaceIds: Set<string>;
 }
 
-// Camera and view controller hook component
-const MapCameraHandler: React.FC<{
-  places: (PublicPlace | UserSavedPlace)[];
-  selectedPlace: (PublicPlace | UserSavedPlace) | null;
-}> = ({ places, selectedPlace }) => {
-  const map = useMap();
+// Popular Indonesian culinary city centers for quick navigation
+const CITIES = [
+  { name: "All", lat: -6.2297, lng: 106.8295, zoom: 11 },
+  { name: "Jakarta", lat: -6.2297, lng: 106.8295, zoom: 12 },
+  { name: "Bandung", lat: -6.9175, lng: 107.6191, zoom: 13 },
+  { name: "Surabaya", lat: -7.2575, lng: 112.7521, zoom: 13 },
+  { name: "Yogyakarta", lat: -7.7956, lng: 110.3695, zoom: 13 },
+  { name: "Bali", lat: -8.65, lng: 115.2167, zoom: 11 },
+];
 
-  // Smoothly pan & zoom to the selected place
+/**
+ * Subcomponent to handle programmatic camera pan/zoom inside Google Maps context
+ */
+const MapCameraController: React.FC<{
+  selectedPlace: (PublicPlace | UserSavedPlace) | null;
+  activeCityTarget: { lat: number; lng: number; zoom: number } | null;
+  places: (PublicPlace | UserSavedPlace)[];
+}> = ({ selectedPlace, activeCityTarget, places }) => {
+  const map = useMap();
+  const prevSelectedIdRef = useRef<string | null>(null);
+
+  // Pan to selected place smoothly when user selects a place
   useEffect(() => {
-    if (!map || !selectedPlace || !selectedPlace.lat || !selectedPlace.lng) return;
-    map.panTo({ lat: selectedPlace.lat, lng: selectedPlace.lng });
-    map.setZoom(15);
+    if (!map || !selectedPlace?.lat || !selectedPlace?.lng) return;
+    if (prevSelectedIdRef.current !== selectedPlace.placeId) {
+      prevSelectedIdRef.current = selectedPlace.placeId;
+      map.panTo({ lat: selectedPlace.lat, lng: selectedPlace.lng });
+      map.setZoom(16);
+    }
   }, [map, selectedPlace]);
 
-  // Auto-fit all markers when place list changes and no single place is highlighted
+  // Pan when user clicks quick city jump button
   useEffect(() => {
-    if (!map || selectedPlace || places.length === 0) return;
-    if (typeof google === "undefined" || !google.maps) return;
-
-    try {
-      const bounds = new google.maps.LatLngBounds();
-      let validCount = 0;
-      places.forEach((p) => {
-        if (p.lat && p.lng) {
-          bounds.extend({ lat: p.lat, lng: p.lng });
-          validCount++;
-        }
-      });
-
-      if (validCount > 0) {
-        map.fitBounds(bounds, {
-          top: 60,
-          bottom: 120,
-          left: 60,
-          right: 60,
-        });
-      }
-    } catch (err) {
-      console.warn("Could not fit bounds:", err);
-    }
-  }, [map, places, selectedPlace]);
+    if (!map || !activeCityTarget) return;
+    map.panTo({ lat: activeCityTarget.lat, lng: activeCityTarget.lng });
+    map.setZoom(activeCityTarget.zoom);
+  }, [map, activeCityTarget]);
 
   return null;
 };
@@ -80,163 +76,227 @@ export const FoodMap: React.FC<FoodMapProps> = ({
   places,
   selectedPlace,
   onSelectPlace,
+  onClose,
   onSaveToMyRadar,
   onDelete,
   userSavedPlaceIds,
 }) => {
-  const [apiKey, setApiKey] = useState<string>(
-    ((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string) || ""
-  );
-  const [loadingKey, setLoadingKey] = useState(!apiKey);
+  const [apiKey, setApiKey] = useState<string>("");
+  const [isLoadingKey, setIsLoadingKey] = useState<boolean>(true);
+  const [activeCity, setActiveCity] = useState("All");
+  const [activeCityTarget, setActiveCityTarget] = useState<{
+    lat: number;
+    lng: number;
+    zoom: number;
+  } | null>(null);
 
-  // Fetch Google Maps API key from backend if not in client env
   useEffect(() => {
-    if (apiKey) return;
     let isMounted = true;
-    fetch("/api/config/maps")
-      .then((res) => res.json())
-      .then((data) => {
-        if (isMounted && data.apiKey) {
-          setApiKey(data.apiKey);
-        }
-      })
-      .catch((err) => console.warn("Failed to fetch Google Maps API config:", err))
-      .finally(() => {
-        if (isMounted) setLoadingKey(false);
-      });
-
+    fetchGoogleMapsApiKey().then((key) => {
+      if (isMounted) {
+        setApiKey(key);
+        setIsLoadingKey(false);
+      }
+    });
     return () => {
       isMounted = false;
     };
-  }, [apiKey]);
+  }, []);
 
-  if (loadingKey) {
-    return (
-      <div className="w-full h-full min-h-[420px] rounded-3xl overflow-hidden border border-black/[0.08] bg-[#EBEBE8] flex flex-col items-center justify-center gap-3 p-6 text-center">
-        <Loader2 className="w-7 h-7 text-[#FF5C35] animate-spin" />
-        <span className="text-xs font-semibold text-[#71716E]">
-          Loading Google Maps Platform...
-        </span>
-      </div>
-    );
-  }
+  const handleCityJump = (city: (typeof CITIES)[0]) => {
+    setActiveCity(city.name);
+    setActiveCityTarget({ lat: city.lat, lng: city.lng, zoom: city.zoom });
+  };
 
-  if (!apiKey) {
-    return (
-      <div className="w-full h-full min-h-[420px] rounded-3xl overflow-hidden border border-black/[0.08] bg-[#EBEBE8] flex flex-col items-center justify-center gap-3 p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700">
-          <MapPin className="w-6 h-6" />
-        </div>
-        <h3 className="text-sm font-bold text-[#1A1A1A]">
-          Google Maps API Key Not Configured
-        </h3>
-        <p className="text-xs text-[#71716E] max-w-sm">
-          Please set <code className="bg-black/[0.06] px-1.5 py-0.5 rounded text-[#1A1A1A] font-mono">GOOGLE_MAPS_API_KEY</code> in your project environment settings.
-        </p>
-      </div>
-    );
-  }
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      onSelectPlace(null);
+    }
+  };
+
+  // Keyboard shortcut: Press Escape to close active place card
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedPlace) {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedPlace, onClose, onSelectPlace]);
+
+  const isPublic = mode === "community_pulse";
 
   return (
-    <div className="relative w-full h-full min-h-[420px] rounded-2xl sm:rounded-3xl overflow-hidden border-[3px] border-[#18181B] shadow-[6px_6px_0px_#18181B] bg-[#EBEBE8]">
-      <APIProvider apiKey={apiKey}>
-        <Map
-          defaultCenter={{ lat: -6.2297, lng: 106.8295 }}
-          defaultZoom={12}
-          mapId="DEMO_MAP_ID"
-          style={{ width: "100%", height: "100%", minHeight: "420px" }}
-          internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
-          gestureHandling="greedy"
-          disableDefaultUI={false}
-          zoomControl={true}
-          mapTypeControl={false}
-          streetViewControl={false}
-          fullscreenControl={false}
-        >
-          <MapCameraHandler places={places} selectedPlace={selectedPlace} />
+    <div className="relative w-full h-full min-h-[440px] rounded-2xl sm:rounded-3xl overflow-hidden border-[3px] border-[#18181B] shadow-[6px_6px_0px_#18181B] bg-[#EBEBE8] flex flex-col">
+      {/* Google Maps Viewport */}
+      {isLoadingKey ? (
+        <div className="w-full h-full min-h-[440px] flex flex-col items-center justify-center bg-[#FFFDF7] p-6 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#FEF08A] border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] flex items-center justify-center animate-spin mb-3">
+            <RefreshCw className="w-6 h-6 text-[#18181B]" />
+          </div>
+          <h4 className="text-sm font-black font-display text-[#18181B]">
+            Loading Google Maps...
+          </h4>
+          <p className="text-xs text-[#52525B] font-mono-code mt-1">
+            Connecting to Google Maps Platform
+          </p>
+        </div>
+      ) : !apiKey ? (
+        <div className="w-full h-full min-h-[440px] flex flex-col items-center justify-center bg-[#FFFDF7] p-6 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-[#FF5533] text-white border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] flex items-center justify-center font-black text-xl mb-3">
+            !
+          </div>
+          <h4 className="text-base font-black font-display text-[#18181B]">
+            Google Maps API Key Not Found
+          </h4>
+          <p className="text-xs text-[#52525B] max-w-sm mt-1">
+            Ensure that the <code className="bg-[#FEF08A] px-1 py-0.5 rounded border border-[#18181B] font-bold">GOOGLE_MAPS_API_KEY</code> environment variable is set.
+          </p>
+        </div>
+      ) : (
+        <APIProvider apiKey={apiKey} libraries={["places", "marker", "geometry"]}>
+          <div className="w-full h-full min-h-[440px] z-0">
+            <Map
+              mapId="DEMO_MAP_ID"
+              internalUsageAttributionIds={["gmp_mcp_codeassist_v1_aistudio"]}
+              defaultCenter={{ lat: -6.2297, lng: 106.8295 }}
+              defaultZoom={12}
+              gestureHandling="greedy"
+              disableDefaultUI={false}
+              streetViewControl={false}
+              mapTypeControl={false}
+              style={{ width: "100%", height: "100%" }}
+              onClick={() => {
+                if (selectedPlace) {
+                  handleClose();
+                }
+              }}
+            >
+              <MapCameraController
+                selectedPlace={selectedPlace}
+                activeCityTarget={activeCityTarget}
+                places={places}
+              />
 
-          {/* Render Advanced Markers for each Culinary Place */}
-          {places.map((place) => {
-            if (!place.lat || !place.lng) return null;
-            const isSelected = selectedPlace?.placeId === place.placeId;
-            const isPublic = mode === "community_pulse";
-            const saveCount = "saveCount" in place ? (place.saveCount as number) : 1;
-            const isViral = isPublic && saveCount >= 40;
+              {places.map((place) => {
+                if (!place.lat || !place.lng) return null;
 
-            return (
-              <AdvancedMarker
-                key={place.placeId}
-                position={{ lat: place.lat, lng: place.lng }}
-                onClick={() => onSelectPlace(place)}
-                title={place.name}
-              >
-                {mode === "my_radar" ? (
-                  <div className="relative flex items-center justify-center cursor-pointer group">
+                const isSelected = selectedPlace?.placeId === place.placeId;
+                const saveCount = "saveCount" in place ? (place.saveCount as number) : 1;
+                const isVisited = "visited" in place && place.visited;
+                const isViral = isPublic && saveCount >= 40;
+
+                return (
+                  <AdvancedMarker
+                    key={place.placeId}
+                    position={{ lat: place.lat, lng: place.lng }}
+                    onClick={(e) => {
+                      if (isSelected) {
+                        handleClose();
+                      } else {
+                        onSelectPlace(place);
+                      }
+                    }}
+                    title={place.name}
+                    zIndex={isSelected ? 1000 : undefined}
+                  >
                     <div
-                      className={`w-10 h-10 rounded-xl border-2 border-[#18181B] ${
-                        isSelected
-                          ? "bg-[#FEF08A] scale-125 shadow-[3px_3px_0px_#18181B] z-30"
-                          : "bg-[#BBF7D0] hover:scale-110 shadow-[2px_2px_0px_#18181B]"
-                      } text-[#18181B] flex items-center justify-center transition-transform font-black`}
-                    >
-                      <Bookmark className="w-4 h-4 fill-[#18181B] stroke-[2.5]" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative flex items-center justify-center cursor-pointer group">
-                    <div
-                      className={`w-10 h-10 rounded-xl border-2 border-[#18181B] ${
-                        isViral
-                          ? "bg-[#FF5533] text-white shadow-[3px_3px_0px_#18181B] animate-pulse"
-                          : saveCount >= 25
-                          ? "bg-[#FEF08A] text-[#18181B] shadow-[2px_2px_0px_#18181B]"
-                          : "bg-white text-[#18181B] shadow-[2px_2px_0px_#18181B]"
-                      } flex flex-col items-center justify-center transition-transform ${
-                        isSelected ? "scale-125 shadow-[4px_4px_0px_#18181B] z-30" : "hover:scale-110"
+                      className={`relative cursor-pointer transition-transform ${
+                        isSelected ? "scale-125 z-50" : "hover:scale-110"
                       }`}
                     >
-                      <div className="flex items-center text-[10px] font-black leading-none font-mono-code">
-                        <span className="mr-0.5">🔥</span>
-                        <span>{saveCount}</span>
+                      <div
+                        className={`px-2.5 py-1.5 rounded-xl border-2 border-[#18181B] text-xs font-black flex items-center gap-1.5 shadow-[2.5px_2.5px_0px_#18181B] whitespace-nowrap font-mono-code ${
+                          isSelected
+                            ? "bg-[#FF5533] text-white ring-2 ring-[#18181B]"
+                            : !isPublic && isVisited
+                            ? "bg-[#BBF7D0] text-[#18181B]"
+                            : isViral
+                            ? "bg-[#FF5533] text-white"
+                            : saveCount >= 25
+                            ? "bg-[#FEF08A] text-[#18181B]"
+                            : "bg-white text-[#18181B]"
+                        }`}
+                      >
+                        <span>
+                          {isPublic ? (
+                            isViral ? "🔥" : "🍴"
+                          ) : isVisited ? (
+                            "✓"
+                          ) : (
+                            "🍴"
+                          )}
+                        </span>
+                        <span className="max-w-[110px] truncate">{place.name}</span>
+                        {isPublic && (
+                          <span className="text-[10px] opacity-85">({saveCount})</span>
+                        )}
                       </div>
+                      <div className="w-2.5 h-2.5 bg-[#18181B] rotate-45 mx-auto -mt-1 shadow-xs" />
                     </div>
-                    {isViral && (
-                      <div className="absolute -top-3 whitespace-nowrap bg-[#18181B] text-[#FEF08A] text-[9px] font-black px-1.5 py-0.2 rounded border border-[#FEF08A] font-mono-code uppercase">
-                        Viral
-                      </div>
-                    )}
-                  </div>
-                )}
-              </AdvancedMarker>
-            );
-          })}
-        </Map>
-      </APIProvider>
+                  </AdvancedMarker>
+                );
+              })}
+            </Map>
+          </div>
+        </APIProvider>
+      )}
 
-      {/* Floating Mode Info Badge */}
-      <div className="absolute top-4 left-4 z-10 bg-[#FFFDF7] px-3.5 py-1.5 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] text-xs font-black text-[#18181B] flex items-center gap-2 pointer-events-none font-mono-code">
+      {/* City Quick Jumper Bar (Top Right) */}
+      <div className="absolute top-3 right-3 z-10 hidden sm:flex items-center gap-1.5 bg-[#FFFDF7] p-1.5 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B]">
+        {CITIES.map((c) => (
+          <button
+            key={c.name}
+            onClick={() => handleCityJump(c)}
+            className={`px-2.5 py-1 text-[11px] font-black rounded-lg border transition-all cursor-pointer ${
+              activeCity === c.name
+                ? "bg-[#FEF08A] text-[#18181B] border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B]"
+                : "bg-white text-[#52525B] border-transparent hover:border-[#18181B] hover:text-[#18181B]"
+            }`}
+          >
+            {c.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Mode Indicator Badge (Top Left) */}
+      <div className="absolute top-3 left-3 z-10 bg-[#FFFDF7] px-3 py-1.5 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] text-xs font-black text-[#18181B] flex items-center gap-2 pointer-events-none font-mono-code">
         {mode === "my_radar" ? (
           <>
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-[#18181B]"></span>
-            <span>Google Maps: Private Radar ({places.length} Spots)</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-[#18181B]" />
+            <span>Personal Food Map ({places.length} Spots)</span>
           </>
         ) : (
           <>
             <Flame className="w-3.5 h-3.5 text-[#FF5533] stroke-[3]" />
-            <span>Google Maps: Community Pulse ({places.length} Food Spots)</span>
+            <span>Community Radar ({places.length} Recommendations)</span>
           </>
         )}
       </div>
 
-      {/* Floating Selected Place Info Card (Bottom Center / Left) */}
+      {/* Selected Place Floating Drawer Card */}
       {selectedPlace && (
-        <div className="absolute bottom-5 left-4 right-4 sm:left-6 sm:right-auto sm:max-w-sm z-20 bg-[#FFFDF7] rounded-2xl p-4 shadow-[5px_5px_0px_#18181B] border-[2.5px] border-[#18181B] animate-slide-up">
+        <div className="absolute bottom-4 left-3 right-3 sm:left-6 sm:right-auto sm:max-w-sm z-20 bg-[#FFFDF7] rounded-2xl p-4 shadow-[5px_5px_0px_#18181B] border-[2.5px] border-[#18181B] transition-all">
           <div className="flex items-start justify-between gap-2">
-            <div>
+            <div className="flex-1 pr-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-black uppercase tracking-wider bg-[#FEF08A] text-[#18181B] px-2 py-0.5 rounded border border-[#18181B] font-mono-code">
                   {selectedPlace.city}
                 </span>
+                {"visited" in selectedPlace && (
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded border border-[#18181B] font-mono-code ${
+                      selectedPlace.visited
+                        ? "bg-[#BBF7D0] text-[#18181B]"
+                        : "bg-[#BAE6FD] text-[#18181B]"
+                    }`}
+                  >
+                    {selectedPlace.visited ? "Tried" : "Want to Try"}
+                  </span>
+                )}
                 {"saveCount" in selectedPlace && (
                   <span className="text-[10px] font-black bg-[#FECDD3] text-[#18181B] px-2 py-0.5 rounded flex items-center gap-1 border border-[#18181B] font-mono-code">
                     <Flame className="w-3 h-3 text-[#FF5533] stroke-[3]" />
@@ -244,114 +304,87 @@ export const FoodMap: React.FC<FoodMapProps> = ({
                   </span>
                 )}
               </div>
-              <h3 className="text-base font-black font-display text-[#18181B] mt-1.5 tracking-tight">
+              <h3 className="text-base font-black font-display text-[#18181B] mt-1.5 tracking-tight leading-snug">
                 {selectedPlace.name}
               </h3>
               <p className="text-xs text-[#52525B] line-clamp-1 mt-0.5 font-medium">
                 {selectedPlace.address}
               </p>
             </div>
-            {selectedPlace.rating && (
-              <div className="text-xs font-black bg-[#FEF08A] text-[#18181B] px-2 py-1 rounded-lg border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] flex items-center gap-0.5 shrink-0">
-                <Star className="w-3.5 h-3.5 fill-[#18181B] text-[#18181B]" />
-                <span>{selectedPlace.rating}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Dishes */}
-          <div className="mt-2.5 pt-2 border-t-2 border-[#18181B]">
-            <span className="text-[10px] font-black text-[#52525B] uppercase tracking-wider block mb-1 flex items-center gap-1 font-mono-code">
-              <Utensils className="w-3 h-3 stroke-[2.5]" /> Recommended Dishes
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {(
-                ("recommendedDishes" in selectedPlace
-                  ? selectedPlace.recommendedDishes
-                  : (selectedPlace as PublicPlace).topDishes) || []
-              ).map((d, i) => (
-                <span
-                  key={i}
-                  className="text-[11px] bg-white text-[#18181B] border border-[#18181B] font-bold px-2 py-0.5 rounded shadow-[1px_1px_0px_#18181B]"
-                >
-                  {d}
-                </span>
-              ))}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {selectedPlace.rating && (
+                <div className="text-xs font-black bg-[#FEF08A] text-[#18181B] px-2 py-1 rounded-lg border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] flex items-center gap-0.5">
+                  <Star className="w-3.5 h-3.5 fill-[#18181B] text-[#18181B]" />
+                  <span>{selectedPlace.rating}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClose();
+                }}
+                className="p-1.5 rounded-lg bg-white hover:bg-[#FF5533] text-[#18181B] hover:text-white border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] transition-colors cursor-pointer flex items-center justify-center"
+                title="Close (Esc)"
+                aria-label="Close place details"
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+              </button>
             </div>
           </div>
 
-          {/* Personal notes if available */}
-          {"personalNotes" in selectedPlace && selectedPlace.personalNotes && (
-            <div className="mt-2 text-xs bg-[#FEF08A] text-[#18181B] p-2 rounded-lg border border-[#18181B] font-handwriting">
-              "{selectedPlace.personalNotes}"
+          {/* Dishes */}
+          {((selectedPlace as any).recommendedDishes || (selectedPlace as any).topDishes)?.length > 0 && (
+            <div className="mt-3 flex items-center gap-1.5 text-xs text-[#18181B] bg-white p-2 rounded-xl border-2 border-[#18181B]">
+              <Utensils className="w-3.5 h-3.5 text-[#FF5533] shrink-0" />
+              <span className="font-bold line-clamp-1">
+                {(
+                  (selectedPlace as any).recommendedDishes ||
+                  (selectedPlace as any).topDishes
+                ).join(", ")}
+              </span>
             </div>
           )}
 
           {/* Action buttons */}
-          <div className="mt-3 pt-2.5 border-t-2 border-[#18181B] flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="mt-3.5 flex items-center gap-2 pt-2 border-t-2 border-[#18181B]">
+            {/* Google Maps Route External Link */}
             <a
-              href={getGoogleMapsUrl(selectedPlace, "directions")}
+              href={getGoogleMapsUrl(selectedPlace)}
               target="_blank"
               rel="noopener noreferrer"
-              title="Get Directions on Google Maps (Registered Place)"
-              className="flex-1 min-w-[120px] flex items-center justify-center gap-1.5 bg-[#18181B] hover:bg-black text-[#FFFDF7] text-xs font-black py-2 px-3 rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
+              className="flex-1 py-2 px-3 bg-[#BAE6FD] hover:bg-[#7dd3fc] text-[#18181B] border-2 border-[#18181B] rounded-xl text-xs font-black shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <Navigation className="w-3.5 h-3.5 text-[#FEF08A] stroke-[2.5]" />
+              <Navigation className="w-3.5 h-3.5" />
               <span>Directions</span>
             </a>
 
-            {(() => {
-              const rawUrl =
-                "sourceUrl" in selectedPlace && selectedPlace.sourceUrl
-                  ? selectedPlace.sourceUrl
-                  : "";
-              const videoUrl =
-                rawUrl ||
-                `https://www.tiktok.com/search?q=${encodeURIComponent(
-                  `${selectedPlace.name} ${selectedPlace.city}`
-                )}`;
-              return (
-                <a
-                  href={videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Watch Original Review Video on TikTok"
-                  className="flex items-center gap-1.5 py-2 px-3 text-[#18181B] bg-white hover:bg-[#FEF08A] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 text-xs font-black shrink-0"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Review Video</span>
-                </a>
-              );
-            })()}
-
-            {mode === "community_pulse" && onSaveToMyRadar && (
+            {/* Save to My Radar (if community mode and not saved yet) */}
+            {isPublic && onSaveToMyRadar && (
               <button
-                type="button"
                 onClick={() => onSaveToMyRadar(selectedPlace as PublicPlace)}
-                className={`flex items-center gap-1 text-xs font-black py-2 px-3 rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 shrink-0 ${
+                disabled={userSavedPlaceIds.has(selectedPlace.placeId)}
+                className={`py-2 px-3 rounded-xl border-2 border-[#18181B] text-xs font-black shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 flex items-center gap-1.5 cursor-pointer ${
                   userSavedPlaceIds.has(selectedPlace.placeId)
-                    ? "bg-[#BBF7D0] text-[#18181B]"
-                    : "bg-[#FF5533] text-white"
+                    ? "bg-[#E5E7EB] text-[#6B7280] cursor-not-allowed"
+                    : "bg-[#FF5533] hover:bg-[#ff4420] text-white"
                 }`}
               >
-                <BookmarkPlus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <BookmarkPlus className="w-3.5 h-3.5" />
                 <span>
-                  {userSavedPlaceIds.has(selectedPlace.placeId)
-                    ? "Saved"
-                    : "+ Save"}
+                  {userSavedPlaceIds.has(selectedPlace.placeId) ? "Saved" : "Save"}
                 </span>
               </button>
             )}
 
-            {mode === "my_radar" && onDelete && (
+            {/* Delete button (if private radar mode) */}
+            {!isPublic && onDelete && (
               <button
-                type="button"
                 onClick={() => onDelete(selectedPlace.placeId)}
-                title="Remove this place from My Radar"
-                className="flex items-center gap-1 text-xs font-black py-2 px-3 text-[#18181B] bg-[#FECDD3] hover:bg-rose-200 border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 shrink-0"
+                className="p-2 bg-white hover:bg-rose-50 text-rose-600 border-2 border-[#18181B] rounded-xl text-xs font-black shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 cursor-pointer"
+                title="Remove from Food Journal"
               >
-                <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Remove</span>
+                <Trash2 className="w-4 h-4" />
               </button>
             )}
           </div>

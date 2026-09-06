@@ -15,24 +15,23 @@
 ---
 
 ## 2. Terminology & Brand Conventions (Strict Rules)
-1. **App Title**: Always use **"Jurnal Rasa"**.
-2. **No Generic/Removed Badges**:
-   - Do NOT add "Food Journal" badges (explicitly removed by user).
-   - Do NOT add `#AccelerateAIwithCloudRun` or `Google Cloud Gen AI Academy APAC (Cohort 3)` to the footer or headers (explicitly removed by user).
+1. **App Title / Brand**: Always use **"Jurnal Rasa"** for the application brand name.
+2. **Tab & Section Names (English)**:
+   - **"Taste Journal"**: Green tab and section for personal notes and AI Taste Finder (not to be confused with the brand name).
+   - **"Taste Map"**: Map view of saved taste notes.
+   - **"Explore Taste"**: Community trending / viral culinary gems.
 3. **Core Buttons & Labels**:
-   - **"Simpan dari Sosmed"**: The social media link parser button (formerly "Curate Link" / "Kurasi Tautan").
-   - **"Catat Cepat"**: Quick note entry with Google Maps search integration.
-   - **"Peta Rasa"**: Map view of saved taste notes.
-   - **"Jelajah Rasa"**: Community trending / viral culinary gems.
+   - **"Quick Save"**: The social media link parser button for TikTok & Instagram links (formerly "Save from Socials" / "Simpan dari Sosmed").
+   - **"Quick Note"**: Quick note entry with Google Maps search integration (formerly "Catat Cepat").
    - **"Taste Finder"**: AI Copilot assistant tab. Responds in **English by default** and renders markdown (`react-markdown`) without unparsed asterisks.
 4. **Header Sticker**:
-   - `★ JURNAL RASA EDITION` is styled as a washi-tape badge pinned cleanly above the container border (`-top-3 right-6 sm:right-8`) with ample negative space above "Catat Cepat".
+   - `★ NUSANTARA EDITION` is styled as a washi-tape badge pinned cleanly above the container border (`-top-3 right-6 sm:right-8`).
 
 ---
 
 ## 3. Tech Stack & Architecture
 - **Runtime**: Full-Stack Node.js (Express + Vite SPA middleware).
-- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide React icons, Leaflet with custom neo-brutalist markers, `react-markdown` for chat bubbles.
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide React icons, Google Maps Platform (`@vis.gl/react-google-maps`) with custom neo-brutalist pins, `react-markdown` for chat bubbles.
 - **Visual Design**: Neo-brutalist Notebook theme.
   - Background: Creamy off-white paper tone (`#FFFDF7`, `#F7F4EA`).
   - Borders: High-contrast solid ink lines (`2px` to `3px` solid `#18181B`).
@@ -58,7 +57,7 @@
 - `src/components/CopilotChat.tsx`: AI chat interface with `react-markdown`, English welcome message, and grounded journal context.
 - `src/components/CuratorModal.tsx`: "Simpan dari Sosmed" link parser modal with Gemini extraction and manual refinement.
 - `src/components/QuickManualModal.tsx`: "Catat Cepat" modal with live Google Maps place search, dish tagging, and review stamps.
-- `src/components/FoodMap.tsx`: Leaflet map view with city switching, custom pins, and popup cards.
+- `src/components/FoodMap.tsx`: Google Maps Platform view (`@vis.gl/react-google-maps`) with city switching, custom pins, and popup cards.
 - `src/components/MobileBottomNav.tsx`: Bottom bar navigation for mobile devices (`Jurnal Rasa`, `Peta Rasa`, `Jelajah Rasa`).
 - `src/components/Navbar.tsx`: Top navigation with brand header, "Simpan dari Sosmed", "Catat Cepat", and user profile.
 - `src/lib/maps.ts`: Google Maps helper utilities for URLs and external routing.

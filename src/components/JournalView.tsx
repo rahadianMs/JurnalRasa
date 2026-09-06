@@ -24,7 +24,7 @@ import {
   Compass,
   Link2,
 } from "lucide-react";
-import { UserSavedPlace } from "../types";
+import { UserSavedPlace, RecommendedTastePlace } from "../types";
 import { getGoogleMapsUrl } from "../lib/maps";
 import { CopilotChat } from "./CopilotChat";
 
@@ -47,6 +47,7 @@ interface JournalViewProps {
   availableCities: string[];
   availableTags: string[];
   initialSubTab?: "places" | "chat";
+  onSavePlace?: (place: RecommendedTastePlace) => Promise<void> | void;
 }
 
 export const JournalView: React.FC<JournalViewProps> = ({
@@ -68,6 +69,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
   availableCities,
   availableTags,
   initialSubTab = "places",
+  onSavePlace,
 }) => {
   const [visitedFilter, setVisitedFilter] = useState<"all" | "wishlist" | "visited">("all");
   const [subTab, setSubTab] = useState<"places" | "chat">(initialSubTab);
@@ -119,21 +121,21 @@ export const JournalView: React.FC<JournalViewProps> = ({
       <div className="relative bg-[#FFFDF7] rounded-2xl sm:rounded-3xl p-4 sm:p-6 border-[2.5px] border-[#18181B] shadow-[4px_4px_0px_#18181B]">
         {/* Decorative corner tag (raised on top border like a bookmark sticker) */}
         <div className="absolute -top-3 right-6 sm:right-8 hidden sm:block bg-[#FEF08A] text-[#18181B] border-[1.5px] border-[#18181B] px-3 py-0.5 text-[10px] font-mono-code font-black uppercase rotate-1 shadow-[1.5px_1.5px_0px_#18181B] z-10 select-none">
-          ★ JURNAL RASA EDITION
+          ★ NUSANTARA EDITION
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
           <div>
             <div className="flex items-center gap-2.5">
               <span className="text-xl sm:text-2xl font-black tracking-tight font-display text-[#18181B]">
-                Jurnal Rasa
+                Taste Journal
               </span>
               <span className="text-[10px] font-black px-2 py-0.5 rounded bg-[#BBF7D0] text-[#18181B] border-[1.5px] border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] font-mono-code uppercase">
-                Catatan & Finder AI
+                Notes & AI Finder
               </span>
             </div>
             <p className="text-xs sm:text-sm text-[#52525B] mt-1 font-medium font-handwriting text-base text-[#18181B]">
-              Buku catatan kuliner pribadi, spot viral TikTok/IG tersimpan, dan asisten AI pintar.
+              Personal culinary journal, saved TikTok/IG viral spots, and smart AI taste assistant.
             </p>
           </div>
 
@@ -142,72 +144,25 @@ export const JournalView: React.FC<JournalViewProps> = ({
             <button
               onClick={onOpenCurator}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#FF5533] hover:bg-[#ff4420] text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[3.5px_3.5px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
-              title="Scroll sosmed nemu tempat makan enak? Simpan link-nya di sini biar gak kelupaan!"
+              title="Quick save food spots from TikTok or Instagram links"
             >
               <Link2 className="w-4 h-4 stroke-[2.5]" />
-              <span>Simpan dari Sosmed</span>
+              <span>Quick Save</span>
               <Sparkles className="w-3.5 h-3.5 text-yellow-300 hidden sm:inline" />
             </button>
             <button
               onClick={onOpenQuickManual}
               className="flex items-center justify-center gap-1.5 bg-[#FEF08A] hover:bg-[#fde047] text-[#18181B] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[3.5px_3.5px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
-              title="Tambah catatan tempat manual atau cari via Google Maps"
+              title="Add place note manually or search via Google Maps"
             >
               <PenLine className="w-4 h-4 stroke-[2.5]" />
-              <span className="hidden sm:inline">Catat Cepat</span>
+              <span className="hidden sm:inline">Quick Note</span>
             </button>
           </div>
         </div>
 
-        {/* Quick Access to Peta Rasa & Jelajah Rasa (Especially helpful for mobile users) */}
-        <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 mt-3.5 pt-3.5 border-t-2 border-[#18181B]">
-          <button
-            type="button"
-            id="quick-nav-map-btn"
-            onClick={onNavigateToMap}
-            className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-[#BAE6FD] hover:bg-[#7dd3fc] text-[#18181B] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 group text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-white border-2 border-[#18181B] flex items-center justify-center text-[#18181B] shrink-0 font-black shadow-[1.5px_1.5px_0px_#18181B] group-hover:scale-105 transition-transform">
-                <Map className="w-4 h-4 text-blue-700 stroke-[2.5]" />
-              </div>
-              <div className="truncate">
-                <div className="text-xs sm:text-sm font-black font-display text-[#18181B] flex items-center gap-1">
-                  <span>Peta Rasa</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform shrink-0" />
-                </div>
-                <div className="text-[10px] text-[#52525B] font-mono-code font-bold truncate">
-                  Lihat {totalCount} titik di peta
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            id="quick-nav-community-btn"
-            onClick={onNavigateToCommunity}
-            className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-[#FF99C8] hover:bg-[#f472b6] text-[#18181B] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0.5 active:translate-y-0.5 group text-left cursor-pointer"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-white border-2 border-[#18181B] flex items-center justify-center text-[#18181B] shrink-0 font-black shadow-[1.5px_1.5px_0px_#18181B] group-hover:scale-105 transition-transform">
-                <Flame className="w-4 h-4 text-rose-600 stroke-[2.5]" />
-              </div>
-              <div className="truncate">
-                <div className="text-xs sm:text-sm font-black font-display text-[#18181B] flex items-center gap-1">
-                  <span>Jelajah Rasa</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform shrink-0" />
-                </div>
-                <div className="text-[10px] text-[#52525B] font-mono-code font-bold truncate">
-                  {communityCount > 0 ? `${communityCount} spot viral` : "Spot viral komunitas"}
-                </div>
-              </div>
-            </div>
-          </button>
-        </div>
-
-        {/* Primary Sub-Navigation (Merged: Catatan Tempat & Tanya AI / Finder) */}
-        <div className="flex items-center gap-2 mt-3.5 pt-3.5 border-t-2 border-[#18181B]">
+        {/* Primary Sub-Navigation (Koleksi Tempat vs Tanya AI Copilot) */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t-2 border-[#18181B]">
           <button
             onClick={() => setSubTab("places")}
             className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-black border-2 transition-all ${
@@ -217,7 +172,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span>Koleksi Tempat ({totalCount})</span>
+            <span>Places Collection ({totalCount})</span>
           </button>
 
           <button
@@ -229,7 +184,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-700" />
-            <span>Tanya Asisten AI (Finder)</span>
+            <span>Taste Finder AI</span>
             <span className="w-2 h-2 rounded-full bg-[#FF5533] border border-[#18181B] animate-ping" />
           </button>
         </div>
@@ -237,73 +192,61 @@ export const JournalView: React.FC<JournalViewProps> = ({
 
       {/* SUB-VIEW 1: PLACES CARDS & NOTEBOOK INDEX */}
       {subTab === "places" && (
-        <div className="space-y-4">
-          {/* Quick AI Suggestion Banner inside Places view */}
-          <div className="bg-[#FEF08A] rounded-2xl p-3 sm:p-3.5 border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-white border border-[#18181B] flex items-center justify-center text-[#18181B] shrink-0 font-black">
-                <Sparkles className="w-4 h-4 text-amber-600" />
-              </div>
-              <p className="text-xs font-bold text-[#18181B] leading-tight">
-                Bingung mau makan apa hari ini? Tanya Asisten AI untuk rekomendasikan spot dari catatanmu.
-              </p>
+        <div className="space-y-3.5">
+          {/* Compact Filter Status Bar */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                onClick={() => setVisitedFilter("all")}
+                className={`px-3 py-1.5 rounded-xl border-2 text-xs font-black transition-all flex items-center gap-1.5 ${
+                  visitedFilter === "all"
+                    ? "bg-[#BAE6FD] text-[#18181B] border-[#18181B] shadow-[2px_2px_0px_#18181B]"
+                    : "bg-white text-[#52525B] border-[#18181B] hover:bg-[#F7F4EA]"
+                }`}
+              >
+                <span>All Entries</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white text-[#18181B] border border-[#18181B] font-mono-code font-bold">
+                  {totalCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setVisitedFilter("wishlist")}
+                className={`px-3 py-1.5 rounded-xl border-2 text-xs font-black transition-all flex items-center gap-1.5 ${
+                  visitedFilter === "wishlist"
+                    ? "bg-[#FEF08A] text-[#18181B] border-[#18181B] shadow-[2px_2px_0px_#18181B]"
+                    : "bg-white text-[#52525B] border-[#18181B] hover:bg-[#F7F4EA]"
+                }`}
+              >
+                <span>Want to Try</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white text-[#18181B] border border-[#18181B] font-mono-code font-bold">
+                  {wishlistCount}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setVisitedFilter("visited")}
+                className={`px-3 py-1.5 rounded-xl border-2 text-xs font-black transition-all flex items-center gap-1.5 ${
+                  visitedFilter === "visited"
+                    ? "bg-[#BBF7D0] text-[#18181B] border-[#18181B] shadow-[2px_2px_0px_#18181B]"
+                    : "bg-white text-[#52525B] border-[#18181B] hover:bg-[#F7F4EA]"
+                }`}
+              >
+                <span>Tried & Tested</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white text-[#18181B] border border-[#18181B] font-mono-code font-bold">
+                  {visitedCount}
+                </span>
+              </button>
             </div>
+
+            {/* Quick AI Trigger */}
             <button
               onClick={() => setSubTab("chat")}
-              className="self-start sm:self-auto px-3 py-1.5 bg-[#18181B] text-white hover:bg-black rounded-lg text-xs font-black flex items-center gap-1.5 transition-transform hover:-translate-x-0.5 active:translate-x-0.5 shadow-[1.5px_1.5px_0px_#52525B]"
+              className="text-xs font-bold text-[#18181B] hover:text-[#FF5533] flex items-center gap-1 bg-[#FEF08A] px-2.5 py-1.5 rounded-xl border border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B]"
             >
-              <span>Mulai Tanya AI</span>
-              <ArrowRight className="w-3 h-3 stroke-[2.5]" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              <span>AI Taste Advisor</span>
             </button>
-          </div>
-
-          {/* Stats index cards */}
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3.5">
-            <div
-              onClick={() => setVisitedFilter("all")}
-              className={`cursor-pointer p-2.5 sm:p-3 rounded-xl border-2 text-center transition-all ${
-                visitedFilter === "all"
-                  ? "bg-[#BAE6FD] border-[#18181B] shadow-[3px_3px_0px_#18181B] -translate-y-0.5"
-                  : "bg-white border-[#18181B] hover:bg-[#F7F4EA] shadow-[1.5px_1.5px_0px_#18181B]"
-              }`}
-            >
-              <div className="text-lg sm:text-2xl font-black font-display text-[#18181B]">{totalCount}</div>
-              <div className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#18181B] mt-0.5 font-mono-code">
-                📖 Semua Entri
-              </div>
-            </div>
-
-            <div
-              onClick={() => setVisitedFilter("wishlist")}
-              className={`cursor-pointer p-2.5 sm:p-3 rounded-xl border-2 text-center transition-all ${
-                visitedFilter === "wishlist"
-                  ? "bg-[#FEF08A] border-[#18181B] shadow-[3px_3px_0px_#18181B] -translate-y-0.5"
-                  : "bg-white border-[#18181B] hover:bg-[#F7F4EA] shadow-[1.5px_1.5px_0px_#18181B]"
-              }`}
-            >
-              <div className="text-lg sm:text-2xl font-black font-display text-amber-900 flex items-center justify-center gap-1">
-                <span>{wishlistCount}</span>
-              </div>
-              <div className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#18181B] mt-0.5 font-mono-code">
-                ⭐ Ingin Coba
-              </div>
-            </div>
-
-            <div
-              onClick={() => setVisitedFilter("visited")}
-              className={`cursor-pointer p-2.5 sm:p-3 rounded-xl border-2 text-center transition-all ${
-                visitedFilter === "visited"
-                  ? "bg-[#BBF7D0] border-[#18181B] shadow-[3px_3px_0px_#18181B] -translate-y-0.5"
-                  : "bg-white border-[#18181B] hover:bg-[#F7F4EA] shadow-[1.5px_1.5px_0px_#18181B]"
-              }`}
-            >
-              <div className="text-lg sm:text-2xl font-black font-display text-emerald-950 flex items-center justify-center gap-1">
-                <span>{visitedCount}</span>
-              </div>
-              <div className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-[#18181B] mt-0.5 font-mono-code">
-                ✅ Sudah Dicoba
-              </div>
-            </div>
           </div>
 
           {/* Search & Filter Bar */}
@@ -314,7 +257,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onChangeSearch(e.target.value)}
-                placeholder="Cari tempat, nama menu, atau catatan rasa..."
+                placeholder="Search places, signature dishes, or taste notes..."
                 className="w-full pl-10 pr-4 py-2 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[1.5px_1.5px_0px_#18181B]"
               />
             </div>
@@ -367,17 +310,17 @@ export const JournalView: React.FC<JournalViewProps> = ({
                               ? "bg-[#BBF7D0] text-[#14532d] border-[#14532d] shadow-[2px_2px_0px_#14532d] -rotate-1"
                               : "bg-[#FEF08A] text-[#713f12] border-[#713f12] shadow-[2px_2px_0px_#713f12] rotate-1"
                           }`}
-                          title="Klik untuk ubah status: Sudah Dicoba vs Ingin Coba"
+                          title="Click to toggle status: Tried vs Want to Try"
                         >
                           {isVisited ? (
                             <>
                               <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>Sudah Dicoba</span>
+                              <span>Tried</span>
                             </>
                           ) : (
                             <>
                               <Clock className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>Ingin Dicoba</span>
+                              <span>Want to Try</span>
                             </>
                           )}
                         </button>
@@ -386,14 +329,14 @@ export const JournalView: React.FC<JournalViewProps> = ({
                           <button
                             onClick={() => onSelectOnMap(place)}
                             className="p-1.5 text-[#18181B] bg-white hover:bg-[#BAE6FD] border-[1.5px] border-[#18181B] rounded-lg shadow-[1px_1px_0px_#18181B] transition-colors"
-                            title="Tampilkan di Peta Rasa"
+                            title="Show on Taste Map"
                           >
                             <MapPin className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => onDeletePlace(place.placeId)}
                             className="p-1.5 text-rose-700 bg-white hover:bg-rose-100 border-[1.5px] border-[#18181B] rounded-lg shadow-[1px_1px_0px_#18181B] transition-colors"
-                            title="Hapus dari Jurnal"
+                            title="Delete from Journal"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -417,7 +360,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                         <div className="mt-3.5 bg-[#FEF08A] border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] p-3 rounded-xl rotate-[-0.5deg]">
                           <div className="font-mono-code font-black text-[10px] uppercase tracking-wider text-[#18181B] flex items-center gap-1.5 mb-1">
                             <StickyNote className="w-3 h-3 text-[#FF5533]" />
-                            <span>Catatan Rasa Pribadi:</span>
+                            <span>Personal Taste Notes:</span>
                           </div>
                           <p className="font-handwriting text-sm sm:text-base leading-snug text-[#18181B]">
                             "{place.personalNotes}"
@@ -429,7 +372,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                       {place.visualCue && (
                         <div className="mt-2.5 text-[10px] text-[#18181B] bg-[#BAE6FD] border-[1.5px] border-[#18181B] px-2 py-0.5 rounded-md inline-flex items-center gap-1 font-mono-code font-bold shadow-[1px_1px_0px_#18181B]">
                           <Eye className="w-3 h-3 text-blue-900 shrink-0" />
-                          <span>Petunjuk foto slide:</span>
+                          <span>Slide visual cue:</span>
                           <span className="truncate underline">{place.visualCue}</span>
                         </div>
                       )}
@@ -439,7 +382,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                         <div className="mt-3.5">
                           <div className="text-[10px] font-black text-[#52525B] uppercase tracking-wider mb-1.5 flex items-center gap-1 font-mono-code">
                             <Utensils className="w-3 h-3 text-[#18181B]" />
-                            <span>Menu Rekomendasi:</span>
+                            <span>Recommended Dishes:</span>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {place.recommendedDishes.map((dish, i) => (
@@ -476,10 +419,10 @@ export const JournalView: React.FC<JournalViewProps> = ({
                           type="button"
                           onClick={() => onSelectOnMap(place)}
                           className="inline-flex items-center gap-1 text-[11px] font-black text-[#18181B] bg-[#BAE6FD] hover:bg-[#7dd3fc] px-2 py-0.5 rounded border border-[#18181B] shadow-[1px_1px_0px_#18181B] font-mono-code transition-colors"
-                          title="Buka titik spot ini di Peta Rasa"
+                          title="Show this spot on Taste Map"
                         >
                           <MapPin className="w-3 h-3 text-[#FF5533]" />
-                          <span>Peta Rasa</span>
+                          <span>Taste Map</span>
                         </button>
                         {place.sourceUrl && (
                           <a
@@ -488,7 +431,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-black text-[#18181B] hover:text-[#FF5533] underline font-mono-code"
                           >
-                            <span>Sumber</span>
+                            <span>Source</span>
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
@@ -497,7 +440,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-[11px] font-black text-[#18181B] bg-[#FEF08A] hover:bg-[#fde047] px-2 py-0.5 rounded border border-[#18181B] shadow-[1px_1px_0px_#18181B] font-mono-code transition-colors"
-                          title="Buka rute navigasi di Google Maps"
+                          title="Open directions in Google Maps"
                         >
                           <span>Maps</span>
                           <ExternalLink className="w-3 h-3" />
@@ -513,10 +456,10 @@ export const JournalView: React.FC<JournalViewProps> = ({
             <div className="bg-[#FFFDF7] rounded-2xl p-4 border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left mt-4">
               <div>
                 <h4 className="text-sm font-black font-display text-[#18181B]">
-                  Eksplorasi Jurnal Rasa Lebih Lanjut
+                  Explore Further in Jurnal Rasa
                 </h4>
                 <p className="text-xs text-[#52525B] font-medium mt-0.5">
-                  Buka semua titik di Peta Rasa atau temukan spot rekomendasi viral dari komunitas kuliner.
+                  View all spots on Taste Map or discover viral gems recommended by the culinary community.
                 </p>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -524,19 +467,19 @@ export const JournalView: React.FC<JournalViewProps> = ({
                   type="button"
                   id="bottom-nav-map-btn"
                   onClick={onNavigateToMap}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 bg-[#BAE6FD] hover:bg-[#7dd3fc] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl text-xs font-black transition-transform hover:-translate-x-0.5 active:translate-x-0.5"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 bg-[#BAE6FD] hover:bg-[#7dd3fc] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl text-xs font-black transition-transform hover:-translate-x-0.5 active:translate-x-0.5 cursor-pointer"
                 >
                   <Map className="w-3.5 h-3.5 text-blue-700 stroke-[2.5]" />
-                  <span>Buka Peta Rasa</span>
+                  <span>Open Taste Map</span>
                 </button>
                 <button
                   type="button"
                   id="bottom-nav-community-btn"
                   onClick={onNavigateToCommunity}
-                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 bg-[#FF99C8] hover:bg-[#f472b6] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl text-xs font-black transition-transform hover:-translate-x-0.5 active:translate-x-0.5"
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 bg-[#FF99C8] hover:bg-[#f472b6] text-[#18181B] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl text-xs font-black transition-transform hover:-translate-x-0.5 active:translate-x-0.5 cursor-pointer"
                 >
                   <Flame className="w-3.5 h-3.5 text-rose-600 stroke-[2.5]" />
-                  <span>Jelajah Rasa</span>
+                  <span>Explore Taste</span>
                 </button>
               </div>
             </div>
@@ -547,31 +490,31 @@ export const JournalView: React.FC<JournalViewProps> = ({
                 <BookOpen className="w-8 h-8 text-[#18181B]" />
               </div>
               <h4 className="text-lg font-black font-display text-[#18181B]">
-                Belum ada catatan yang cocok
+                No matching notes found
               </h4>
               <p className="text-xs sm:text-sm text-[#52525B] max-w-md mx-auto mt-1 font-handwriting text-base">
-                Scroll sosmed nemu spot kuliner enak? Simpan tautan TikTok/IG ke sini biar gak lupa, atau gunakan Catat Cepat via Google Maps.
+                Found an appetizing spot on social media? Save the TikTok/IG link here so you never forget, or use Quick Note with Google Maps.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2.5 mt-5">
                 <button
                   onClick={onOpenCurator}
-                  className="bg-[#FF5533] hover:bg-[#ff4420] text-white px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 flex items-center gap-1.5"
+                  className="bg-[#FF5533] hover:bg-[#ff4420] text-white px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Link2 className="w-3.5 h-3.5" />
-                  <span>Simpan dari Sosmed</span>
+                  <span>Quick Save</span>
                 </button>
                 <button
                   onClick={onOpenQuickManual}
-                  className="bg-[#FEF08A] hover:bg-[#fde047] text-[#18181B] px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5"
+                  className="bg-[#FEF08A] hover:bg-[#fde047] text-[#18181B] px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 cursor-pointer"
                 >
-                  Catat Cepat
+                  Quick Note
                 </button>
                 <button
                   onClick={onNavigateToCommunity}
-                  className="bg-[#FF99C8] hover:bg-[#f472b6] text-[#18181B] px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 flex items-center gap-1.5"
+                  className="bg-[#FF99C8] hover:bg-[#f472b6] text-[#18181B] px-4 py-2 rounded-xl text-xs font-black border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Flame className="w-3.5 h-3.5 text-rose-600 stroke-[2.5]" />
-                  <span>Jelajah Viral</span>
+                  <span>Explore Viral Gems</span>
                 </button>
               </div>
             </div>
@@ -585,17 +528,17 @@ export const JournalView: React.FC<JournalViewProps> = ({
           <div className="bg-[#FFFDF7] p-3 rounded-2xl border-2 border-[#18181B] shadow-[3px_3px_0px_#18181B] flex items-center justify-between">
             <button
               onClick={() => setSubTab("places")}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FEF08A] hover:bg-[#fde047] text-[#18181B] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-xl text-xs font-black transition-transform hover:-translate-x-0.5"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FEF08A] hover:bg-[#fde047] text-[#18181B] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-xl text-xs font-black transition-transform hover:-translate-x-0.5 cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>← Kembali ke Daftar Catatan</span>
+              <span>← Back to Notes List</span>
             </button>
             <span className="text-[11px] font-mono-code font-bold text-[#52525B]">
-              Terhubung ke {totalCount} tempat di Jurnal Rasa
+              Grounded in {totalCount} spots in your Jurnal Rasa
             </span>
           </div>
 
-          <CopilotChat journalPlaces={places} />
+          <CopilotChat journalPlaces={places} onSavePlace={onSavePlace} />
         </div>
       )}
     </div>

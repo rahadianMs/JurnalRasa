@@ -4,7 +4,6 @@ import {
   db,
   googleProvider,
   signInWithPopup,
-  signInAnonymously,
   signOut,
   onAuthStateChanged,
   collection,
@@ -14,6 +13,7 @@ import {
   onSnapshot,
   increment,
   serverTimestamp,
+  cleanupGuestSession,
   type User,
 } from "./lib/firebase";
 import {
@@ -40,6 +40,7 @@ import { JournalView } from "./components/JournalView";
 import { CopilotChat } from "./components/CopilotChat";
 import { QuickManualModal } from "./components/QuickManualModal";
 import { MobileBottomNav } from "./components/MobileBottomNav";
+import { LandingPage } from "./components/LandingPage";
 import {
   Search,
   SlidersHorizontal,
@@ -92,22 +93,36 @@ export default function App() {
         setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
-          displayName: firebaseUser.displayName || (firebaseUser.isAnonymous ? "Foodie Guest" : "User"),
+          displayName:
+            firebaseUser.displayName ||
+            (firebaseUser.isAnonymous ? "Guest Explorer" : "Food Explorer"),
           photoURL: firebaseUser.photoURL,
           isAnonymous: firebaseUser.isAnonymous,
         });
+        try {
+          localStorage.removeItem("jr_is_guest");
+        } catch {}
       } else {
-        // Automatically create anonymous user session for zero-friction trial if not logged in
-        signInAnonymously(auth).catch((err) => {
-          console.warn("Anonymous auth failed, fallback to local guest session:", err);
+        // Check if user is active in a local guest session
+        let isGuest = false;
+        try {
+          isGuest = localStorage.getItem("jr_is_guest") === "true";
+        } catch {}
+
+        if (isGuest) {
+          const guestId =
+            localStorage.getItem("jr_guest_uid") ||
+            ("guest_" + Date.now().toString(36));
           setUser({
-            uid: "guest_session_" + Date.now().toString(36),
+            uid: guestId,
             email: null,
-            displayName: "Flavor Explorer Guest",
+            displayName: "Guest Explorer",
             photoURL: null,
             isAnonymous: true,
           });
-        });
+        } else {
+          setUser(null);
+        }
       }
       setAuthLoading(false);
     });
@@ -221,17 +236,82 @@ export default function App() {
       setIsAuthModalOpen(false);
       showToast("Successfully signed in with Google!");
     } catch (err: any) {
-      console.error("Google sign in error:", err);
-      showToast("Failed to sign in with Google: " + (err.message || ""));
+      if (
+        err?.code === "auth/unauthorized-domain" ||
+        err?.message?.includes("unauthorized-domain")
+      ) {
+        console.warn(
+          "Firebase Auth: Current domain is not registered in Firebase Console Authorized Domains."
+        );
+        const domain = typeof window !== "undefined" ? window.location.hostname : "";
+        showToast(
+          `Domain (${domain}) is not authorized in Firebase Auth. Please use Guest Mode!`
+        );
+      } else if (
+        err?.code === "auth/popup-closed-by-user" ||
+        err?.code === "auth/cancelled-popup-request"
+      ) {
+        // User closed popup; do not log fatal error
+      } else {
+        console.error("Google sign in error:", err);
+        showToast("Failed to sign in with Google: " + (err.message || ""));
+      }
+      throw err;
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    try {
+      const guestId =
+        localStorage.getItem("jr_guest_uid") ||
+        ("guest_" + Date.now().toString(36));
+      localStorage.setItem("jr_guest_uid", guestId);
+      localStorage.setItem("jr_is_guest", "true");
+      setUser({
+        uid: guestId,
+        email: null,
+        displayName: "Guest Explorer",
+        photoURL: null,
+        isAnonymous: true,
+      });
+      showToast("Guest Mode active! All features ready to explore.");
+    } catch {
+      setUser({
+        uid: "guest_" + Date.now().toString(36),
+        email: null,
+        displayName: "Guest Explorer",
+        photoURL: null,
+        isAnonymous: true,
+      });
     }
   };
 
   const handleSignOut = async () => {
     try {
+      if (user?.isAnonymous) {
+        // Clean up guest local data
+        try {
+          localStorage.removeItem("jr_is_guest");
+          localStorage.removeItem("jr_guest_uid");
+          localStorage.removeItem(`jr_active_conv_${user.uid}`);
+          localStorage.removeItem(`rr_user_saved_${user.uid}`);
+          localStorage.removeItem(`rr_deleted_ids_${user.uid}`);
+        } catch {}
+        if (auth.currentUser) {
+          await cleanupGuestSession(user.uid);
+        }
+        showToast("Guest session ended and temporary notes cleared.");
+      } else {
+        showToast("Successfully signed out of Google account.");
+      }
       await signOut(auth);
-      showToast("Successfully signed out.");
-    } catch (err) {
-      console.error(err);
+      setUser(null);
+    } catch (err: any) {
+      console.warn("Sign out notice:", err);
+      try {
+        await signOut(auth);
+      } catch {}
+      setUser(null);
     }
   };
 
@@ -529,6 +609,92 @@ export default function App() {
     ]);
   };
 
+  // Save an AI-recommended spot to user's personal taste journal
+  const handleSavePlaceFromAI = async (recommended: {
+    name: string;
+    city: string;
+    address?: string;
+    signatureDish: string;
+    matchReason?: string;
+    tags?: string[];
+  }) => {
+    const currentUserId = user?.uid || "guest_user";
+
+    // Duplicate check
+    const existing = myPlaces.find(
+      (p) => p.name.toLowerCase().trim() === recommended.name.toLowerCase().trim()
+    );
+    if (existing) {
+      showToast(`"${recommended.name}" is already in your Taste Journal!`);
+      return;
+    }
+
+    const placeId = `ai_rec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+    // Approximate city coordinates fallback for mapping
+    const CITY_COORDS: Record<string, { lat: number; lng: number }> = {
+      jakarta: { lat: -6.2088, lng: 106.8456 },
+      bandung: { lat: -6.9175, lng: 107.6191 },
+      surabaya: { lat: -7.2575, lng: 112.7521 },
+      yogyakarta: { lat: -7.7956, lng: 110.3695 },
+      jogja: { lat: -7.7956, lng: 110.3695 },
+      bali: { lat: -8.65, lng: 115.2167 },
+      semarang: { lat: -6.9667, lng: 110.4167 },
+      solo: { lat: -7.5667, lng: 110.8167 },
+      surakarta: { lat: -7.5667, lng: 110.8167 },
+      medan: { lat: 3.5952, lng: 98.6722 },
+      makassar: { lat: -5.1477, lng: 119.4327 },
+      malang: { lat: -7.9797, lng: 112.6304 },
+    };
+
+    const normCity = (recommended.city || "").toLowerCase();
+    let matchedCoords = { lat: -6.2088, lng: 106.8456 }; // Jakarta default
+    for (const [key, coords] of Object.entries(CITY_COORDS)) {
+      if (normCity.includes(key)) {
+        matchedCoords = coords;
+        break;
+      }
+    }
+
+    const newPlace: UserSavedPlace = {
+      placeId,
+      name: recommended.name,
+      address: recommended.address || `${recommended.name}, ${recommended.city || "Indonesia"}`,
+      city: recommended.city || "Indonesia",
+      lat: matchedCoords.lat,
+      lng: matchedCoords.lng,
+      rating: 4.8,
+      recommendedDishes: recommended.signatureDish ? [recommended.signatureDish] : ["Signature Menu"],
+      tags: recommended.tags?.length ? recommended.tags : ["Taste Finder AI", "Wishlist"],
+      personalNotes: recommended.matchReason
+        ? `Taste Finder AI: ${recommended.matchReason}`
+        : "Discovered via Taste Finder AI exploration",
+      savedAt: new Date().toISOString(),
+      vibesOrSummary: recommended.signatureDish
+        ? `Must try: ${recommended.signatureDish}`
+        : "Curated by Taste Finder AI",
+      visited: false,
+    };
+
+    // Instant optimistic update
+    setMyPlaces((prev) => {
+      const updated = [newPlace, ...prev];
+      try {
+        localStorage.setItem(`rr_user_saved_${currentUserId}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    showToast(`"${recommended.name}" added to your Taste Journal!`);
+
+    await runWithTimeout(
+      setDoc(doc(db, "users", currentUserId, "saved_places", placeId), {
+        ...newPlace,
+        savedAt: serverTimestamp(),
+      })
+    );
+  };
+
   // Remove place from private radar
   const handleDeleteFromMyRadar = async (placeId: string) => {
     const currentUserId = user?.uid || "guest_user";
@@ -653,6 +819,30 @@ export default function App() {
     });
   }, [mode, myPlaces, publicPlaces, selectedCity, selectedTag, searchQuery, sortBy]);
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#FFFDF7] flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="w-14 h-14 rounded-2xl bg-[#FF5533] border-[3px] border-[#18181B] shadow-[4px_4px_0px_#18181B] flex items-center justify-center text-white mb-4 animate-bounce">
+          <Sparkles className="w-8 h-8 stroke-[2.5]" />
+        </div>
+        <h2 className="text-xl font-black font-display text-[#18181B]">Jurnal Rasa</h2>
+        <p className="text-xs text-[#71716E] font-mono-code font-bold mt-1">
+          Preparing your culinary notebook...
+        </p>
+      </div>
+    );
+  }
+
+  // If user is not authenticated, render production-ready Landing Page
+  if (!user) {
+    return (
+      <LandingPage
+        onGoogleSignIn={handleGoogleSignIn}
+        onGuestSignIn={handleGuestSignIn}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F2EB] flex flex-col font-sans text-[#18181B]">
       {/* Toast Notification */}
@@ -719,6 +909,7 @@ export default function App() {
             onChangeSearch={setSearchQuery}
             availableCities={CITIES}
             availableTags={POPULAR_TAGS}
+            onSavePlace={handleSavePlaceFromAI}
           />
         )}
 
@@ -738,16 +929,16 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsQuickManualOpen(true)}
-                  className="bg-white hover:bg-[#FEF08A] text-[#18181B] text-xs font-black px-3 py-2 rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
+                  className="bg-white hover:bg-[#FEF08A] text-[#18181B] text-xs font-black px-3 py-2 rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 cursor-pointer"
                 >
-                  + Catat Cepat
+                  + Quick Note
                 </button>
                 <button
                   onClick={() => setIsCuratorOpen(true)}
-                  className="bg-[#FF5533] hover:bg-[#ff4420] text-white text-xs font-black px-3.5 py-2 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 flex items-center gap-1.5"
-                  title="Scroll sosmed nemu tempat makan enak? Simpan link-nya di sini biar gak kelupaan!"
+                  className="bg-[#FF5533] hover:bg-[#ff4420] text-white text-xs font-black px-3.5 py-2 rounded-xl border-2 border-[#18181B] shadow-[2.5px_2.5px_0px_#18181B] transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 flex items-center gap-1.5 cursor-pointer"
+                  title="Quick save food spots from TikTok or Instagram links"
                 >
-                  <span>+ Simpan dari Sosmed</span>
+                  <span>+ Quick Save</span>
                 </button>
               </div>
             </div>
@@ -759,6 +950,7 @@ export default function App() {
                   places={myPlaces}
                   selectedPlace={selectedPlace}
                   onSelectPlace={(p) => setSelectedPlace(p)}
+                  onClose={() => setSelectedPlace(null)}
                   onSaveToMyRadar={handleSaveCommunityToMyRadar}
                   onDelete={handleDeleteFromMyRadar}
                   userSavedPlaceIds={userSavedPlaceIds}
@@ -840,7 +1032,7 @@ export default function App() {
 
                 <button
                   onClick={() => setIsInfoModalOpen(true)}
-                  title="Taste Radar Architecture Information"
+                  title="Jurnal Rasa Architecture Information"
                   className="p-2 text-[#18181B] hover:bg-[#FEF08A] bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 shrink-0"
                 >
                   <Info className="w-4 h-4 stroke-[2.5]" />
@@ -855,6 +1047,7 @@ export default function App() {
                   places={activePlaces}
                   selectedPlace={selectedPlace}
                   onSelectPlace={(p) => setSelectedPlace(p)}
+                  onClose={() => setSelectedPlace(null)}
                   onSaveToMyRadar={handleSaveCommunityToMyRadar}
                   onDelete={handleDeleteFromMyRadar}
                   userSavedPlaceIds={userSavedPlaceIds}
@@ -932,8 +1125,8 @@ export default function App() {
                   <LogIn className="w-4 h-4 stroke-[2.5]" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black font-display text-[#18181B]">Sign In to Taste Radar</h3>
-                  <p className="text-xs text-[#52525B] font-mono-code font-bold">Access private collection & Firestore sync</p>
+                  <h3 className="text-base font-black font-display text-[#18181B]">Sign In to Jurnal Rasa</h3>
+                  <p className="text-xs text-[#52525B] font-medium">Sync your personal taste journal across devices</p>
                 </div>
               </div>
               <button
@@ -945,7 +1138,7 @@ export default function App() {
             </div>
 
             <p className="text-xs text-[#52525B] font-medium leading-relaxed">
-              By signing in, your curated culinary spots from TikTok and Instagram will be securely saved in your private subcollection <code className="bg-[#FEF08A] text-[#18181B] px-1.5 py-0.5 rounded border border-[#18181B] font-mono-code font-bold">users/{'{userId}'}/saved_places</code> with strict Firestore Security Rules isolation.
+              Sign in with your Google account to automatically back up your saved culinary gems from TikTok and Instagram, sync your taste journal across devices, and keep your personal foodie notes safe and private.
             </p>
 
             <div className="space-y-2.5">
@@ -998,8 +1191,8 @@ export default function App() {
                   <Layers className="w-4 h-4 stroke-[2.5]" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black font-display text-[#18181B]">Arsitektur Jurnal Rasa</h3>
-                  <p className="text-xs text-[#52525B] font-mono-code font-bold">Catatan Kuliner Pribadi & Peta Rekomendasi</p>
+                  <h3 className="text-base font-black font-display text-[#18181B]">Jurnal Rasa Architecture</h3>
+                  <p className="text-xs text-[#52525B] font-mono-code font-bold">Personal Food Journal & Taste Map</p>
                 </div>
               </div>
               <button
@@ -1045,7 +1238,7 @@ export default function App() {
               <div className="p-3.5 bg-[#FEF08A] rounded-xl border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] space-y-1">
                 <span className="font-black text-[#18181B] font-mono-code uppercase">Secure Cloud Backend</span>
                 <p className="text-[#18181B] font-bold">
-                  Express backend aman dan terisolasi tanpa kebocoran API key di sisi klien.
+                  Secure, isolated Express backend keeping all API keys safe server-side.
                 </p>
               </div>
             </div>
@@ -1068,10 +1261,10 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-black font-display text-[#18181B] text-sm">Jurnal Rasa</span>
             <span>•</span>
-            <span className="font-handwriting text-sm text-[#18181B]">Buku Catatan Kuliner Pribadi & Peta Rasa</span>
+            <span className="font-handwriting text-sm text-[#18181B]">Personal Food Journal & Taste Map</span>
           </div>
           <div className="text-[11px] font-mono-code text-[#71716E]">
-            <span>Simpan kuliner favorit tanpa takut kelupaan</span>
+            <span>Save your favorite culinary spots effortlessly</span>
           </div>
         </div>
       </footer>

@@ -18,10 +18,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FFFDF7] border-t-[2.5px] border-[#18181B] px-3 py-1.5 shadow-[0_-3px_0px_#18181B]">
       <div className="flex items-center justify-around max-w-md mx-auto gap-2">
-        {/* Jurnal Rasa Tab (Includes Notes & AI Finder) */}
+        {/* Taste Journal Tab (Includes Notes & AI Finder) */}
         <button
           onClick={() => onSelectTab("journal")}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 px-2 rounded-xl border-2 transition-all ${
+          className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 px-2 rounded-xl border-2 transition-all cursor-pointer ${
             activeTab === "journal" || activeTab === "copilot"
               ? "bg-[#BBF7D0] border-[#18181B] text-[#18181B] shadow-[2px_2px_0px_#18181B] font-extrabold"
               : "border-transparent text-[#52525B] font-bold hover:bg-black/[0.03]"
@@ -35,10 +35,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               </span>
             )}
           </div>
-          <span className="text-[11px] tracking-tight">Jurnal Rasa</span>
+          <span className="text-[11px] tracking-tight">Taste Journal</span>
         </button>
 
-        {/* Peta Rasa Tab */}
+        {/* Peta Rasa / Taste Map Tab */}
         <button
           onClick={() => onSelectTab("map")}
           className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 px-2 rounded-xl border-2 transition-all ${
@@ -48,10 +48,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
         >
           <Map className="w-5 h-5 text-blue-800" />
-          <span className="text-[11px] tracking-tight">Peta Rasa</span>
+          <span className="text-[11px] tracking-tight">Taste Map</span>
         </button>
 
-        {/* Jelajah Rasa Tab */}
+        {/* Jelajah Rasa / Explore Taste Tab */}
         <button
           onClick={() => onSelectTab("community")}
           className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 px-2 rounded-xl border-2 transition-all ${
@@ -68,7 +68,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               </span>
             )}
           </div>
-          <span className="text-[11px] tracking-tight">Jelajah Rasa</span>
+          <span className="text-[11px] tracking-tight">Explore Taste</span>
         </button>
       </div>
     </nav>

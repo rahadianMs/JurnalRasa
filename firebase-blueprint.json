@@ -35,6 +35,30 @@
         "tags": { "type": "array", "items": { "type": "string" } },
         "lastUpdated": { "type": "string" }
       }
+    },
+    "UserConversation": {
+      "path": "users/{userId}/conversations/{conversationId}",
+      "description": "Private Taste Finder copilot conversation session with auto-generated summary",
+      "fields": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "summaryVersion": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "ConversationMessage": {
+      "path": "users/{userId}/conversations/{conversationId}/messages/{messageId}",
+      "description": "Individual turn message in Taste Finder conversation",
+      "fields": {
+        "id": { "type": "string" },
+        "role": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
     }
   }
 }

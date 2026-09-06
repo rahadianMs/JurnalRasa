@@ -5,10 +5,11 @@
 ## Directives for Gemini Models
 
 1. **Domain & Brand**:
-   - The application is **Jurnal Rasa** — a personal culinary notebook and taste radar.
+   - The application brand is **Jurnal Rasa** — a personal culinary notebook and taste radar.
    - Never revert the app name or re-add removed promotional badges (e.g. do not re-add `#AccelerateAIwithCloudRun` or `Google Cloud Gen AI Academy APAC (Cohort 3)` to the footer).
-   - The social media link extraction action is named **"Simpan dari Sosmed"**.
-   - The quick manual entry with Google Maps search is named **"Catat Cepat"**.
+   - The social media link extraction action is named **"Quick Save"** (formerly "Save from Socials" / "Simpan dari Sosmed").
+   - The quick manual entry with Google Maps search is named **"Quick Note"** (formerly "Catat Cepat").
+   - The green navigation tab and section for personal notes is named **"Taste Journal"**.
 
 2. **Taste Finder AI Copilot Persona**:
    - In-app assistant: **Taste Finder**.
