@@ -29,7 +29,6 @@ import {
   INITIAL_PUBLIC_PLACES,
   INITIAL_USER_SAVED_PLACES,
   CITIES,
-  POPULAR_TAGS,
 } from "./lib/demoData";
 import { Navbar } from "./components/Navbar";
 import { FoodMap } from "./components/FoodMap";
@@ -68,8 +67,8 @@ const isExcludedFromExplore = (place: { placeId?: string; name?: string; saveCou
   // 2. Remove Haraku Ramen & testing data
   if (nameLower.includes("haraku") || idLower.includes("haraku")) return true;
 
-  // 3. Remove testing remnants with count (1) or low test save count (<= 2)
-  if (place.saveCount !== undefined && place.saveCount <= 2) return true;
+  // 3. Remove places with zero or negative save count
+  if (place.saveCount !== undefined && place.saveCount <= 0) return true;
 
   // Explicit check for known test place IDs
   if (
@@ -147,7 +146,6 @@ export default function App() {
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState("All Cities");
-  const [selectedTag, setSelectedTag] = useState("All Categories");
   const [sortBy, setSortBy] = useState<"latest" | "most_saved" | "rating">("most_saved");
 
   // Show toast notification
@@ -343,6 +341,67 @@ export default function App() {
       console.warn("Error setting up user places listener:", err);
     }
   }, [user]);
+
+  // 4. Ensure any personal taste journal entries (myPlaces) are synced into Explore Taste (publicPlaces)
+  useEffect(() => {
+    if (!myPlaces || myPlaces.length === 0) return;
+
+    // Identify places in personal journal that are not yet represented in Explore Taste and not excluded
+    const unlistedMyPlaces = myPlaces.filter(
+      (mp) =>
+        !isExcludedFromExplore(mp) &&
+        !publicPlaces.some((pp) => pp.placeId === mp.placeId)
+    );
+
+    if (unlistedMyPlaces.length === 0) return;
+
+    const newPublicEntries: PublicPlace[] = unlistedMyPlaces.map((mp) => ({
+      placeId: mp.placeId,
+      name: mp.name,
+      address: mp.address,
+      city: mp.city,
+      lat: mp.lat,
+      lng: mp.lng,
+      rating: mp.rating || 4.5,
+      saveCount: 1,
+      topDishes: mp.recommendedDishes || [],
+      tags: mp.tags || [],
+      lastUpdated: new Date().toISOString(),
+      vibesOrSummary: mp.vibesOrSummary || mp.personalNotes || "Added from Taste Journal",
+      sourceUrl: mp.sourceUrl || "",
+    }));
+
+    setPublicPlaces((prev) => [...newPublicEntries, ...prev]);
+
+    // Sync to Firestore public_places
+    unlistedMyPlaces.forEach(async (mp) => {
+      try {
+        await runWithTimeout(
+          setDoc(
+            doc(db, "public_places", mp.placeId),
+            {
+              placeId: mp.placeId,
+              name: mp.name,
+              address: mp.address,
+              city: mp.city,
+              lat: mp.lat,
+              lng: mp.lng,
+              rating: mp.rating || 4.5,
+              saveCount: 1,
+              topDishes: mp.recommendedDishes || [],
+              tags: mp.tags || [],
+              vibesOrSummary: mp.vibesOrSummary || mp.personalNotes || "Added from Taste Journal",
+              sourceUrl: mp.sourceUrl || "",
+              lastUpdated: serverTimestamp(),
+            },
+            { merge: true }
+          )
+        );
+      } catch {
+        // ignore
+      }
+    });
+  }, [myPlaces, publicPlaces]);
 
   // Auth actions
   const handleGoogleSignIn = async () => {
@@ -791,7 +850,23 @@ export default function App() {
       visited: false,
     };
 
-    // Instant optimistic update
+    const publicPlaceData: PublicPlace = {
+      placeId: newPlace.placeId,
+      name: newPlace.name,
+      address: newPlace.address,
+      city: newPlace.city,
+      lat: newPlace.lat,
+      lng: newPlace.lng,
+      rating: newPlace.rating || 4.8,
+      saveCount: 1,
+      topDishes: newPlace.recommendedDishes || [],
+      tags: newPlace.tags || [],
+      lastUpdated: new Date().toISOString(),
+      vibesOrSummary: newPlace.vibesOrSummary || "Discovered via Taste Finder AI",
+      sourceUrl: "",
+    };
+
+    // Instant optimistic updates
     setMyPlaces((prev) => {
       const updated = [newPlace, ...prev];
       try {
@@ -800,17 +875,50 @@ export default function App() {
       return updated;
     });
 
-    showToast(`"${recommended.name}" added to your Taste Journal!`);
+    setPublicPlaces((prev) => {
+      const idx = prev.findIndex((p) => p.placeId === newPlace.placeId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], saveCount: updated[idx].saveCount + 1 };
+        return updated;
+      }
+      return [publicPlaceData, ...prev];
+    });
 
-    await runWithTimeout(
-      setDoc(doc(db, "users", currentUserId, "saved_places", placeId), {
-        ...newPlace,
-        savedAt: serverTimestamp(),
-      })
-    );
+    showToast(`"${recommended.name}" added to your Taste Journal & Explore Taste!`);
+
+    await Promise.allSettled([
+      runWithTimeout(
+        setDoc(doc(db, "users", currentUserId, "saved_places", placeId), {
+          ...newPlace,
+          savedAt: serverTimestamp(),
+        })
+      ),
+      runWithTimeout(
+        setDoc(
+          doc(db, "public_places", placeId),
+          {
+            placeId: newPlace.placeId,
+            name: newPlace.name,
+            address: newPlace.address,
+            city: newPlace.city,
+            lat: newPlace.lat,
+            lng: newPlace.lng,
+            rating: newPlace.rating || 4.8,
+            saveCount: increment(1),
+            topDishes: newPlace.recommendedDishes || [],
+            tags: newPlace.tags || [],
+            vibesOrSummary: newPlace.vibesOrSummary || "Discovered via Taste Finder AI",
+            sourceUrl: "",
+            lastUpdated: serverTimestamp(),
+          },
+          { merge: true }
+        )
+      ),
+    ]);
   };
 
-  // Remove place from private radar
+  // Remove place from private radar and sync with Explore Taste
   const handleDeleteFromMyRadar = async (placeId: string) => {
     const currentUserId = user?.uid || "guest_user";
 
@@ -835,9 +943,42 @@ export default function App() {
     if (selectedPlace?.placeId === placeId) {
       setSelectedPlace(null);
     }
-    showToast("Place removed from your Radar.");
+    showToast("Place removed from your Taste Journal.");
 
-    await runWithTimeout(deleteDoc(doc(db, "users", currentUserId, "saved_places", placeId)));
+    // Explore Taste lifecycle rule:
+    // "jika dihapus oleh saya pribadi maka akan hilang jika dia satu atau akan berkurang -1 jika dia lebih dari satu"
+    const existingPublic = publicPlaces.find((p) => p.placeId === placeId);
+    const count = existingPublic ? (existingPublic.saveCount || 1) : 1;
+
+    let publicFirestorePromise: Promise<any>;
+
+    if (count <= 1) {
+      // Completely remove from Explore Taste
+      setPublicPlaces((prev) => prev.filter((p) => p.placeId !== placeId));
+      publicFirestorePromise = runWithTimeout(deleteDoc(doc(db, "public_places", placeId)));
+    } else {
+      // Decrement saveCount by 1 in Explore Taste
+      setPublicPlaces((prev) =>
+        prev.map((p) =>
+          p.placeId === placeId ? { ...p, saveCount: Math.max(0, p.saveCount - 1) } : p
+        )
+      );
+      publicFirestorePromise = runWithTimeout(
+        setDoc(
+          doc(db, "public_places", placeId),
+          {
+            saveCount: increment(-1),
+            lastUpdated: serverTimestamp(),
+          },
+          { merge: true }
+        )
+      );
+    }
+
+    await Promise.allSettled([
+      runWithTimeout(deleteDoc(doc(db, "users", currentUserId, "saved_places", placeId))),
+      publicFirestorePromise,
+    ]);
   };
 
   // Toggle visited status for a journal place
@@ -871,9 +1012,25 @@ export default function App() {
     );
   };
 
-  // Save manual taste log into personal journal
+  // Save manual taste log into personal journal and Explore Taste
   const handleSaveManualPlace = async (newPlace: UserSavedPlace) => {
     const currentUserId = user?.uid || "guest_user";
+
+    const publicPlaceData: PublicPlace = {
+      placeId: newPlace.placeId,
+      name: newPlace.name,
+      address: newPlace.address,
+      city: newPlace.city,
+      lat: newPlace.lat,
+      lng: newPlace.lng,
+      rating: newPlace.rating || 4.5,
+      saveCount: 1,
+      topDishes: newPlace.recommendedDishes || [],
+      tags: newPlace.tags || [],
+      lastUpdated: new Date().toISOString(),
+      vibesOrSummary: newPlace.vibesOrSummary || newPlace.personalNotes || "Added via Quick Note",
+      sourceUrl: newPlace.sourceUrl || "",
+    };
 
     setMyPlaces((prev) => {
       const updated = [newPlace, ...prev.filter((p) => p.placeId !== newPlace.placeId)];
@@ -883,14 +1040,47 @@ export default function App() {
       return updated;
     });
 
-    showToast(`"${newPlace.name}" successfully added to your Taste Journal!`);
+    setPublicPlaces((prev) => {
+      const idx = prev.findIndex((p) => p.placeId === newPlace.placeId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], saveCount: updated[idx].saveCount + 1 };
+        return updated;
+      }
+      return [publicPlaceData, ...prev];
+    });
 
-    await runWithTimeout(
-      setDoc(doc(db, "users", currentUserId, "saved_places", newPlace.placeId), {
-        ...newPlace,
-        savedAt: serverTimestamp(),
-      })
-    );
+    showToast(`"${newPlace.name}" added to your Taste Journal & Explore Taste!`);
+
+    await Promise.allSettled([
+      runWithTimeout(
+        setDoc(doc(db, "users", currentUserId, "saved_places", newPlace.placeId), {
+          ...newPlace,
+          savedAt: serverTimestamp(),
+        })
+      ),
+      runWithTimeout(
+        setDoc(
+          doc(db, "public_places", newPlace.placeId),
+          {
+            placeId: newPlace.placeId,
+            name: newPlace.name,
+            address: newPlace.address,
+            city: newPlace.city,
+            lat: newPlace.lat,
+            lng: newPlace.lng,
+            rating: newPlace.rating || 4.5,
+            saveCount: increment(1),
+            topDishes: newPlace.recommendedDishes || [],
+            tags: newPlace.tags || [],
+            vibesOrSummary: newPlace.vibesOrSummary || newPlace.personalNotes || "Added via Quick Note",
+            sourceUrl: newPlace.sourceUrl || "",
+            lastUpdated: serverTimestamp(),
+          },
+          { merge: true }
+        )
+      ),
+    ]);
   };
 
   // Filtered and Sorted Places
@@ -907,11 +1097,8 @@ export default function App() {
       if (selectedCity !== "All Cities" && !p.city.toLowerCase().includes(selectedCity.toLowerCase())) {
         return false;
       }
-      // Tag filter
-      if (selectedTag !== "All Categories" && !(p.tags || []).some((t) => t.toLowerCase() === selectedTag.toLowerCase())) {
-        return false;
-      }
-      // Search query
+
+      // Search query (matches place name, city, signature dishes, notes, and tags)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const dishes = "recommendedDishes" in p ? p.recommendedDishes : p.topDishes || [];
@@ -935,9 +1122,14 @@ export default function App() {
       if (sortBy === "rating") {
         return (b.rating || 0) - (a.rating || 0);
       }
+      if (sortBy === "latest") {
+        const dateA = new Date("lastUpdated" in a ? a.lastUpdated || 0 : "savedAt" in a ? a.savedAt || 0 : 0).getTime();
+        const dateB = new Date("lastUpdated" in b ? b.lastUpdated || 0 : "savedAt" in b ? b.savedAt || 0 : 0).getTime();
+        return dateB - dateA;
+      }
       return 0;
     });
-  }, [mode, myPlaces, publicPlaces, selectedCity, selectedTag, searchQuery, sortBy]);
+  }, [mode, myPlaces, publicPlaces, selectedCity, searchQuery, sortBy]);
 
   if (authLoading) {
     return (
@@ -1028,12 +1220,9 @@ export default function App() {
             communityCount={publicPlaces.length}
             selectedCity={selectedCity}
             onChangeCity={setSelectedCity}
-            selectedTag={selectedTag}
-            onChangeTag={setSelectedTag}
             searchQuery={searchQuery}
             onChangeSearch={setSearchQuery}
             availableCities={CITIES}
-            availableTags={POPULAR_TAGS}
             onSavePlace={handleSavePlaceFromAI}
             onOpenArchInfo={() => setIsInfoModalOpen(true)}
           />
@@ -1046,7 +1235,7 @@ export default function App() {
               <div>
                 <h2 className="text-base font-black font-display text-[#18181B] flex items-center gap-2">
                   <MapPin className="w-5 h-5 text-[#FF5533] stroke-[2.5]" />
-                  <span>Taste Journal Map (Peta Rasa)</span>
+                  <span>Taste Journal Map</span>
                 </h2>
                 <p className="text-xs text-[#52525B] font-medium font-handwriting">
                   Displaying {myPlaces.length} culinary spots pinned in your personal taste journal
@@ -1116,7 +1305,7 @@ export default function App() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search trending spots, dishes, or cities..."
+                  placeholder="Search trending spots, dishes, categories..."
                   className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[2px_2px_0px_#18181B]"
                 />
               </div>
@@ -1130,18 +1319,6 @@ export default function App() {
                   {CITIES.map((c) => (
                     <option key={c} value={c}>
                       📍 {c}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={selectedTag}
-                  onChange={(e) => setSelectedTag(e.target.value)}
-                  className="bg-white border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] text-[#18181B] text-xs font-black py-2 px-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF5533]"
-                >
-                  {POPULAR_TAGS.map((t) => (
-                    <option key={t} value={t}>
-                      🏷️ {t}
                     </option>
                   ))}
                 </select>
@@ -1338,7 +1515,7 @@ export default function App() {
                   Gemini API (Structured Extraction)
                 </h4>
                 <p className="text-[#52525B] font-medium leading-relaxed">
-                  Extracts food spot information from social media links / captions using model <code className="bg-[#FEF08A] text-[#18181B] px-1 py-0.5 rounded border border-[#18181B] font-mono-code">gemini-2.5-flash</code> with structured JSON schema: restaurant name, city, must-try dishes, price estimate, and culinary tags.
+                  Extracts food spot information from social media links / captions using model <code className="bg-[#FEF08A] text-[#18181B] px-1 py-0.5 rounded border border-[#18181B] font-mono-code">gemini-3.1-flash-lite</code> with structured JSON schema: restaurant name, city, must-try dishes, price estimate, and culinary tags.
                 </p>
               </div>
 

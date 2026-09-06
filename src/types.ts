@@ -112,7 +112,7 @@ export interface ChatConversationMeta {
 export interface FilterState {
   searchQuery: string;
   selectedCity: string;
-  selectedTag: string;
+  selectedTag?: string;
   sortBy: "latest" | "most_saved" | "rating";
 }
 

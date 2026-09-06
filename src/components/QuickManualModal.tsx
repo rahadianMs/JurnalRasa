@@ -182,12 +182,12 @@ export const QuickManualModal: React.FC<QuickManualModalProps> = ({
         lng,
         rating: connectedPlace?.rating || 4.5,
         tasteRating: rating,
-        recommendedDishes: dishList.length > 0 ? dishList : ["Menu Andalan"],
-        tags: connectedPlace ? ["Google Maps", "Catatan Rasa"] : ["Manual Entry", "Catatan Rasa"],
+        recommendedDishes: dishList.length > 0 ? dishList : ["Specialty Menu"],
+        tags: connectedPlace ? ["Google Maps", "Taste Note"] : ["Manual Entry", "Taste Note"],
         personalNotes: cleanNotes,
         visited,
         savedAt: new Date().toISOString(),
-        vibesOrSummary: cleanNotes || `Catatan rasa pribadi untuk ${cleanName}`,
+        vibesOrSummary: cleanNotes || `Personal taste note for ${cleanName}`,
       };
 
       onSave(newPlace);

@@ -41,12 +41,9 @@ interface JournalViewProps {
   communityCount?: number;
   selectedCity: string;
   onChangeCity: (city: string) => void;
-  selectedTag: string;
-  onChangeTag: (tag: string) => void;
   searchQuery: string;
   onChangeSearch: (query: string) => void;
   availableCities: string[];
-  availableTags: string[];
   initialSubTab?: "places" | "chat";
   onSavePlace?: (place: RecommendedTastePlace) => Promise<void> | void;
   onOpenArchInfo?: () => void;
@@ -64,12 +61,9 @@ export const JournalView: React.FC<JournalViewProps> = ({
   communityCount = 0,
   selectedCity,
   onChangeCity,
-  selectedTag,
-  onChangeTag,
   searchQuery,
   onChangeSearch,
   availableCities,
-  availableTags,
   initialSubTab = "places",
   onSavePlace,
   onOpenArchInfo,
@@ -88,15 +82,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
       return false;
     }
 
-    // Tag filter
-    if (
-      selectedTag !== "All Categories" &&
-      !(p.tags || []).some((t) => t.toLowerCase() === selectedTag.toLowerCase())
-    ) {
-      return false;
-    }
-
-    // Search query
+    // Search query (matches place name, city, signature dishes, notes, and tags)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const dishes = p.recommendedDishes || [];
@@ -105,7 +91,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
       const matchesCity = p.city.toLowerCase().includes(q);
       const matchesDishes = dishes.some((d) => d.toLowerCase().includes(q));
       const matchesNotes = notes.toLowerCase().includes(q);
-      const matchesTags = (p.tags || []).some((t) => t.toLowerCase() === q);
+      const matchesTags = (p.tags || []).some((t) => t.toLowerCase().includes(q));
       if (!matchesName && !matchesCity && !matchesDishes && !matchesNotes && !matchesTags) {
         return false;
       }
@@ -270,7 +256,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onChangeSearch(e.target.value)}
-                placeholder="Search places, signature dishes, or taste notes..."
+                placeholder="Search places, dishes, notes, or categories..."
                 className="w-full pl-10 pr-4 py-2 bg-white border-2 border-[#18181B] rounded-xl text-xs sm:text-sm text-[#18181B] placeholder:text-[#71716E] focus:outline-none focus:ring-2 focus:ring-[#FF5533] font-bold shadow-[1.5px_1.5px_0px_#18181B]"
               />
             </div>
@@ -284,18 +270,6 @@ export const JournalView: React.FC<JournalViewProps> = ({
                 {availableCities.map((c) => (
                   <option key={c} value={c}>
                     📍 {c}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={selectedTag}
-                onChange={(e) => onChangeTag(e.target.value)}
-                className="bg-white hover:bg-[#F7F4EA] border-2 border-[#18181B] text-[#18181B] text-xs font-bold py-2 px-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#FF5533] shadow-[1.5px_1.5px_0px_#18181B]"
-              >
-                {availableTags.map((t) => (
-                  <option key={t} value={t}>
-                    🏷️ {t}
                   </option>
                 ))}
               </select>

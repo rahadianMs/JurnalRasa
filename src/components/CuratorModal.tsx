@@ -39,7 +39,7 @@ export interface UrlSanitizationState {
 }
 
 // Client-side sanitizer & strict URL validator (anti-SSRF, anti-XSS, domain whitelist)
-export function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState {
+function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState {
   if (!raw || typeof raw !== "string" || !raw.trim()) {
     return { isValid: false, type: "empty", sanitizedUrl: "" };
   }
@@ -82,7 +82,7 @@ export function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState 
         isValid: false,
         type: "invalid",
         sanitizedUrl: "",
-        feedbackMessage: "Hanya protokol web standar (HTTPS/HTTP) yang diizinkan.",
+        feedbackMessage: "Only standard web protocols (HTTPS/HTTP) are allowed.",
       };
     }
 
@@ -110,7 +110,7 @@ export function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState 
         isValid: false,
         type: "invalid",
         sanitizedUrl: "",
-        feedbackMessage: "Alamat IP atau jaringan lokal tidak diizinkan demi keamanan.",
+        feedbackMessage: "IP addresses and local networks are disallowed for security reasons.",
       };
     }
 
@@ -129,7 +129,7 @@ export function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState 
         isValid: true,
         type: "tiktok",
         sanitizedUrl: parsed.toString(),
-        feedbackMessage: "Tautan TikTok terverifikasi & siap diekstrak.",
+        feedbackMessage: "Verified TikTok link ready to parse.",
       };
     }
 
@@ -138,7 +138,7 @@ export function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState 
         isValid: true,
         type: "instagram",
         sanitizedUrl: parsed.toString(),
-        feedbackMessage: "Tautan Instagram Reels/Post terverifikasi & siap diekstrak.",
+        feedbackMessage: "Verified Instagram link ready to parse.",
       };
     }
 
@@ -146,14 +146,14 @@ export function validateAndSanitizeSocialUrl(raw: string): UrlSanitizationState 
       isValid: false,
       type: "unsupported",
       sanitizedUrl: "",
-      feedbackMessage: "Hanya tautan dari TikTok atau Instagram yang didukung.",
+      feedbackMessage: "Only official links from TikTok or Instagram are supported.",
     };
   } catch {
     return {
       isValid: false,
       type: "invalid",
       sanitizedUrl: "",
-      feedbackMessage: "Format tautan tidak valid. Pastikan tautan TikTok atau Instagram sudah benar.",
+      feedbackMessage: "Invalid link format. Please ensure the TikTok or Instagram link is valid.",
     };
   }
 }
@@ -212,11 +212,11 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
 
   const handleExtractWithAI = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
+
     // Strict client-side validation check
     const validation = validateAndSanitizeSocialUrl(url);
     if (!validation.isValid) {
-      setError(validation.feedbackMessage || "Mohon masukkan tautan publik resmi dari TikTok atau Instagram.");
+      setError(validation.feedbackMessage || "Please provide an official public link from TikTok or Instagram.");
       return;
     }
 
@@ -423,31 +423,31 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
                     {urlValidation.type === "tiktok" && (
                       <div className="flex items-center gap-1.5 text-xs text-[#065F46] font-extrabold bg-[#D1FAE5] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] px-2.5 py-1 rounded-lg w-fit">
                         <Check className="w-3.5 h-3.5 stroke-[3] text-[#059669]" />
-                        <span>Tautan TikTok Terverifikasi & Aman</span>
+                        <span>Verified & Safe TikTok Links</span>
                       </div>
                     )}
                     {urlValidation.type === "instagram" && (
                       <div className="flex items-center gap-1.5 text-xs text-[#9D174D] font-extrabold bg-[#FCE7F3] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] px-2.5 py-1 rounded-lg w-fit">
                         <Check className="w-3.5 h-3.5 stroke-[3] text-[#DB2777]" />
-                        <span>Tautan Instagram Terverifikasi & Aman</span>
+                        <span>Verified & Secure Instagram Links</span>
                       </div>
                     )}
                     {urlValidation.type === "unsupported" && (
                       <div className="flex items-center gap-1.5 text-xs text-[#854D0E] font-bold bg-[#FEF08A] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] px-2.5 py-1 rounded-lg">
                         <AlertCircle className="w-3.5 h-3.5 text-[#B45309] shrink-0" />
-                        <span>Hanya tautan resmi dari TikTok atau Instagram yang didukung.</span>
+                        <span>Only official links from TikTok or Instagram are supported.</span>
                       </div>
                     )}
                     {urlValidation.type === "invalid" && (
                       <div className="flex items-center gap-1.5 text-xs text-[#991B1B] font-bold bg-[#FECDD3] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] px-2.5 py-1 rounded-lg">
                         <AlertCircle className="w-3.5 h-3.5 text-[#BE123C] shrink-0" />
-                        <span>{urlValidation.feedbackMessage || "Format tautan tidak valid atau dilarang."}</span>
+                        <span>{urlValidation.feedbackMessage || "Invalid or disallowed link format."}</span>
                       </div>
                     )}
                   </div>
                 ) : (
                   <p className="text-[11px] text-[#52525B] mt-1.5 font-medium">
-                    Sistem otomatis memvalidasi link resmi TikTok atau Instagram dan mendeteksi nama resto, menu khas, dan koordinat Google Maps.
+                    Automatically validates official TikTok or Instagram links to extract culinary spots, signature dishes, and Google Maps coordinates.
                   </p>
                 )}
               </div>
@@ -510,7 +510,7 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
                 <div className="bg-amber-500/[0.08] border border-amber-500/20 p-3 rounded-xl flex items-start gap-2.5 text-amber-950 text-xs">
                   <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">TrendBite Smart Parser Active</span>
+                    <span className="font-bold">Jurnal Rasa Smart Parser Active</span>
                     <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
                       {fallbackNotice} Addresses and locations matched directly on Google Maps.
                     </p>
@@ -602,11 +602,10 @@ export const CuratorModal: React.FC<CuratorModalProps> = ({
                       return (
                         <div
                           key={place.placeId}
-                          className={`p-3.5 rounded-2xl border transition-all ${
-                            isSelected
-                              ? "bg-white border-[#FF5C35]/40 shadow-sm ring-1 ring-[#FF5C35]/20"
-                              : "bg-black/[0.01] border-black/[0.06] opacity-60 hover:opacity-90"
-                          }`}
+                          className={`p-3.5 rounded-2xl border transition-all ${isSelected
+                            ? "bg-white border-[#FF5C35]/40 shadow-sm ring-1 ring-[#FF5C35]/20"
+                            : "bg-black/[0.01] border-black/[0.06] opacity-60 hover:opacity-90"
+                            }`}
                         >
                           <div className="flex items-start gap-3">
                             <button
