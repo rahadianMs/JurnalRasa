@@ -30,6 +30,7 @@ import { getGoogleMapsUrl } from "../lib/maps";
 import { CopilotChat } from "./CopilotChat";
 
 interface JournalViewProps {
+  userId?: string | null;
   places: UserSavedPlace[];
   onOpenCurator: () => void;
   onOpenQuickManual: () => void;
@@ -50,6 +51,7 @@ interface JournalViewProps {
 }
 
 export const JournalView: React.FC<JournalViewProps> = ({
+  userId,
   places,
   onOpenCurator,
   onOpenQuickManual,
@@ -525,7 +527,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
             </span>
           </div>
 
-          <CopilotChat journalPlaces={places} onSavePlace={onSavePlace} />
+          <CopilotChat key={userId || "guest_user"} userId={userId} journalPlaces={places} onSavePlace={onSavePlace} />
         </div>
       )}
     </div>

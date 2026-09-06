@@ -10,6 +10,7 @@ import {
 } from "firebase/auth";
 import {
   getFirestore,
+  writeBatch,
   collection,
   doc,
   setDoc,
@@ -66,6 +67,7 @@ export async function cleanupGuestSession(userId: string): Promise<void> {
 }
 
 export {
+  writeBatch,
   signInWithPopup,
   signInAnonymously,
   signOut,

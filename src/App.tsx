@@ -1196,6 +1196,7 @@ export default function App() {
         {/* VIEW 1: JURNAL RASA (MERGED: TASTE NOTES + FINDER AI COPILOT) */}
         {(activeTab === "journal" || activeTab === "copilot") && (
           <JournalView
+            userId={user?.uid}
             places={myPlaces}
             initialSubTab={activeTab === "copilot" ? "chat" : "places"}
             onOpenCurator={() => setIsCuratorOpen(true)}

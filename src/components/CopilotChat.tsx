@@ -28,10 +28,11 @@ import {
   getCurrentUserToken,
   collection,
   doc,
-  setDoc,
+  writeBatch,
   getDocs,
   deleteDoc,
 } from "../lib/firebase";
+import { messageCacheKey, readActiveConversation, readConversationList, readMessages, mergeConversations, mergeMessages, saveLocalConversation } from "../lib/chatHistory";
 
 interface CopilotChatProps {
   journalPlaces: UserSavedPlace[];
@@ -54,10 +55,11 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
 }) => {
   const currentUid = userId || auth.currentUser?.uid || "guest_user";
   const [conversationId, setConversationId] = useState<string>(() => {
-    return (
-      (currentUid && localStorage.getItem(`jr_active_conv_${currentUid}`)) ||
-      "conv_" + Date.now().toString(36)
-    );
+    try {
+      const active = readActiveConversation(localStorage, currentUid);
+      if (active) return active;
+    } catch {}
+    return "conv_" + crypto.randomUUID();
   });
 
   const [conversationSummary, setConversationSummary] = useState<string | null>(null);
@@ -76,6 +78,11 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>([initialWelcomeMessage]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  const cloudEnabled = auth.currentUser?.uid === currentUid;
+  const localRevision = useRef(0);
+  const deletedConversations = useRef(new Set<string>());
+  const cloudQueue = useRef<Promise<void>>(Promise.resolve());
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Load conversation list (history) from localStorage & Firestore
@@ -86,13 +93,11 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
     const loadConversationList = async () => {
       // 1. Local storage cache
       try {
-        const cachedList = localStorage.getItem(`jr_conv_list_${currentUid}`);
-        if (cachedList && isMounted) {
-          setConversations(JSON.parse(cachedList));
-        }
+        setConversations(readConversationList(localStorage, currentUid));
       } catch {}
 
       // 2. Firestore query
+      if (!cloudEnabled) return;
       try {
         const convCol = collection(db, `users/${currentUid}/conversations`);
         const snapshot = await getDocs(convCol);
@@ -114,9 +119,12 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
             (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           );
 
-          setConversations(list);
+          // A delayed/older cloud snapshot must not discard local-only sessions.
+          const merged = mergeConversations(list, readConversationList(localStorage, currentUid))
+            .filter(c => !deletedConversations.current.has(c.id));
+          setConversations(prev => mergeConversations(merged, prev));
           try {
-            localStorage.setItem(`jr_conv_list_${currentUid}`, JSON.stringify(list));
+            localStorage.setItem(`jr_conv_list_${currentUid}`, JSON.stringify(merged));
           } catch {}
         }
       } catch (err) {
@@ -128,26 +136,26 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [currentUid]);
+  }, [currentUid, cloudEnabled]);
 
   // Load active conversation & messages
   useEffect(() => {
     if (!currentUid || !conversationId) return;
 
     let isMounted = true;
+    const revision = localRevision.current;
 
     // First check local storage cache for instant rendering
+    setMessages([initialWelcomeMessage]);
+    setConversationSummary(null);
     try {
-      const cachedMsgs = localStorage.getItem(`jr_msgs_${conversationId}`);
-      if (cachedMsgs) {
-        const parsed = JSON.parse(cachedMsgs);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
-        }
-      }
+      const cachedMsgs = readMessages(localStorage, currentUid, conversationId);
+      setMessages(cachedMsgs.length ? cachedMsgs : [initialWelcomeMessage]);
+      setConversationSummary(readConversationList(localStorage, currentUid).find(c => c.id === conversationId)?.summary || null);
     } catch {}
 
     const loadConversation = async () => {
+      if (!cloudEnabled) return;
       try {
         const messagesCol = collection(
           db,
@@ -155,7 +163,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
         );
         const snapshot = await getDocs(messagesCol);
 
-        if (isMounted && !snapshot.empty) {
+        if (isMounted && revision === localRevision.current && !snapshot.empty) {
           const loaded: ChatMessage[] = [];
           snapshot.forEach((d) => {
             const data = d.data();
@@ -172,9 +180,10 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
           loaded.sort((a, b) => a.id.localeCompare(b.id));
 
           if (loaded.length > 0) {
-            setMessages(loaded);
+            const merged = mergeMessages(loaded, readMessages(localStorage, currentUid, conversationId));
+            setMessages(merged);
             try {
-              localStorage.setItem(`jr_msgs_${conversationId}`, JSON.stringify(loaded));
+              localStorage.setItem(messageCacheKey(currentUid, conversationId), JSON.stringify(merged));
             } catch {}
           }
         }
@@ -188,7 +197,60 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [currentUid, conversationId]);
+  }, [currentUid, conversationId, cloudEnabled]);
+
+  // Local persistence is synchronous and independent of both AI and cloud availability.
+  const persistConversation = (nextMessages: ChatMessage[], summary: string, activate = false) => {
+    localRevision.current += 1;
+    const now = new Date().toISOString();
+    let meta: ChatConversationMeta = {
+      id: conversationId, summary,
+      createdAt: conversations.find(c => c.id === conversationId)?.createdAt || now,
+      updatedAt: now, messageCount: nextMessages.filter(m => !m.id.startsWith("welcome")).length,
+    };
+    let savedLocally = false;
+    try {
+      const saved = saveLocalConversation(localStorage, currentUid, conversationId, nextMessages, summary, now, activate);
+      meta = saved.meta;
+      setConversations(saved.list);
+      savedLocally = true;
+    } catch (err) {
+      console.warn("Could not save chat history on this device:", err);
+      setConversations(prev => mergeConversations(prev, [meta]));
+    }
+    setConversationSummary(summary);
+    setStorageNotice(savedLocally ? "Saved on this device" : "Chat could not be saved on this device.");
+
+    if (!cloudEnabled) return;
+    // Keep cloud writes ordered without delaying the AI request.
+    const revision = localRevision.current;
+    const sync = async () => {
+      try {
+        // Include cached turns so a later successful save also repairs earlier failed writes.
+        const savedMessages = nextMessages.filter(m => !m.id.startsWith("welcome"));
+        for (let offset = 0; offset < savedMessages.length; offset += 400) {
+          const batch = writeBatch(db);
+          for (const message of savedMessages.slice(offset, offset + 400)) {
+            batch.set(doc(db, `users/${currentUid}/conversations/${conversationId}/messages/${message.id}`), {
+              role: message.role, content: message.content, timestamp: message.timestamp,
+              suggestedPlaces: message.suggestedPlaces || [],
+            });
+          }
+          if (offset + 400 >= savedMessages.length) {
+            batch.set(doc(db, `users/${currentUid}/conversations/${conversationId}`), { ...meta, userId: currentUid }, { merge: true });
+          }
+          await batch.commit();
+        }
+        if (localRevision.current === revision) setStorageNotice("Synced to your account");
+      } catch (err) {
+        console.warn("Could not sync chat history:", err);
+        if (localRevision.current === revision) setStorageNotice(savedLocally
+          ? "Saved on this device. Cloud sync is unavailable."
+          : "Chat could not be saved. Please copy it before leaving.");
+      }
+    };
+    cloudQueue.current = cloudQueue.current.then(sync);
+  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -233,18 +295,24 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
 
   // Select a past conversation from history
   const handleSelectConversation = (conv: ChatConversationMeta) => {
+    if (loading) return;
+    localRevision.current += 1;
+    setStorageNotice(null);
     setConversationId(conv.id);
     setConversationSummary(conv.summary);
     setShowHistoryModal(false);
 
     if (currentUid) {
-      localStorage.setItem(`jr_active_conv_${currentUid}`, conv.id);
+      try { localStorage.setItem(`jr_active_conv_${currentUid}`, conv.id); } catch {}
     }
   };
 
   // Delete a conversation from history
   const handleDeleteConversation = async (convIdToDelete: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (loading) return;
+    localRevision.current += 1;
+    deletedConversations.current.add(convIdToDelete);
 
     // Remove from state
     const updatedList = conversations.filter((c) => c.id !== convIdToDelete);
@@ -252,6 +320,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
 
     try {
       localStorage.setItem(`jr_conv_list_${currentUid}`, JSON.stringify(updatedList));
+      localStorage.removeItem(messageCacheKey(currentUid, convIdToDelete));
       localStorage.removeItem(`jr_msgs_${convIdToDelete}`);
     } catch {}
 
@@ -261,8 +330,10 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
     }
 
     // Delete from Firestore
-    if (currentUid) {
+    if (cloudEnabled) {
       try {
+        // Finish queued saves first so they cannot recreate a deleted session.
+        await cloudQueue.current;
         await deleteDoc(doc(db, `users/${currentUid}/conversations`, convIdToDelete));
       } catch (err) {
         console.warn("Could not delete conversation doc from Firestore:", err);
@@ -296,28 +367,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
     setInput("");
     setLoading(true);
 
-    // Save locally
-    try {
-      localStorage.setItem(`jr_msgs_${conversationId}`, JSON.stringify(newMessages));
-    } catch {}
-
-    // Persist user message to Firestore if logged in
-    if (currentUid && conversationId) {
-      try {
-        const msgDocRef = doc(
-          db,
-          `users/${currentUid}/conversations/${conversationId}/messages/${userMsgId}`
-        );
-        await setDoc(msgDocRef, {
-          role: "user",
-          content: userMessage.content,
-          timestamp: userMessage.timestamp,
-          createdAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.warn("Could not persist user message:", err);
-      }
-    }
+    persistConversation(newMessages, conversationSummary || messageText.slice(0, 35), true);
 
     try {
       const token = await getCurrentUserToken();
@@ -361,67 +411,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
         const finalMessages = [...newMessages, aiMessage];
         setMessages(finalMessages);
 
-        // Save locally
-        try {
-          localStorage.setItem(`jr_msgs_${conversationId}`, JSON.stringify(finalMessages));
-        } catch {}
-
-        // Persist AI response to Firestore
-        if (currentUid && conversationId) {
-          try {
-            const aiDocRef = doc(
-              db,
-              `users/${currentUid}/conversations/${conversationId}/messages/${aiMsgId}`
-            );
-            await setDoc(aiDocRef, {
-              role: "model",
-              content: aiMessage.content,
-              timestamp: aiMessage.timestamp,
-              createdAt: new Date().toISOString(),
-              suggestedPlaces: aiMessage.suggestedPlaces || [],
-            });
-
-            // Update conversation meta doc with auto summary
-            const newSummary = data.summary || conversationSummary || messageText.slice(0, 35);
-            setConversationSummary(newSummary);
-
-            const convMeta: ChatConversationMeta = {
-              id: conversationId,
-              summary: newSummary,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              messageCount: finalMessages.length,
-            };
-
-            // Update conversation list state
-            setConversations((prev) => {
-              const existingIdx = prev.findIndex((c) => c.id === conversationId);
-              let next: ChatConversationMeta[];
-              if (existingIdx >= 0) {
-                next = [...prev];
-                next[existingIdx] = { ...next[existingIdx], ...convMeta };
-              } else {
-                next = [convMeta, ...prev];
-              }
-              try {
-                localStorage.setItem(`jr_conv_list_${currentUid}`, JSON.stringify(next));
-              } catch {}
-              return next;
-            });
-
-            const convDocRef = doc(db, `users/${currentUid}/conversations/${conversationId}`);
-            await setDoc(
-              convDocRef,
-              {
-                ...convMeta,
-                userId: currentUid,
-              },
-              { merge: true }
-            );
-          } catch (err) {
-            console.warn("Could not persist model message or summary:", err);
-          }
-        }
+        persistConversation(finalMessages, data.summary || conversationSummary || messageText.slice(0, 35));
       } else {
         throw new Error(data.error || "Failed to receive a response from AI Taste Copilot");
       }
@@ -433,20 +423,25 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
         content: `Sorry, an issue occurred while processing your request: ${err.message || "Please try again shortly."}`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      const failedMessages = [...newMessages, errorMessage];
+      setMessages(failedMessages);
+      persistConversation(failedMessages, conversationSummary || messageText.slice(0, 35));
     } finally {
       setLoading(false);
     }
   };
 
   const handleResetChat = () => {
-    const newConvId = "conv_" + Date.now().toString(36);
+    if (loading) return;
+    localRevision.current += 1;
+    setStorageNotice(null);
+    const newConvId = "conv_" + crypto.randomUUID();
     setConversationId(newConvId);
     setConversationSummary(null);
     setShowHistoryModal(false);
 
     if (currentUid) {
-      localStorage.setItem(`jr_active_conv_${currentUid}`, newConvId);
+      try { localStorage.setItem(`jr_active_conv_${currentUid}`, newConvId); } catch {}
     }
 
     setMessages([
@@ -502,6 +497,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
 
           <button
             onClick={handleResetChat}
+            disabled={loading}
             title="Start fresh conversation"
             className="p-2 text-[#18181B] hover:bg-white bg-[#FFFDF7] border-2 border-[#18181B] shadow-[2px_2px_0px_#18181B] rounded-xl transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 text-xs font-black flex items-center gap-1.5 cursor-pointer"
           >
@@ -510,6 +506,12 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
           </button>
         </div>
       </div>
+
+      {storageNotice && (
+        <p role="status" className="px-4 py-2 text-xs font-medium border-b-2 border-[#18181B] bg-[#FFFDF7]">
+          {storageNotice}
+        </p>
+      )}
 
       {/* Auto Summary Banner if present */}
       {conversationSummary && (
@@ -520,7 +522,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
           </div>
           <span className="hidden sm:flex items-center gap-1 text-[10px] font-mono-code bg-white px-2 py-0.5 rounded border border-[#18181B]">
             <Cloud className="w-3 h-3 text-emerald-600" />
-            Saved Session
+            Chat Session
           </span>
         </div>
       )}
@@ -780,6 +782,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
                 </span>
                 <button
                   onClick={handleResetChat}
+                  disabled={loading}
                   className="px-2.5 py-1 text-xs font-black bg-[#BBF7D0] hover:bg-[#86efac] text-[#18181B] border-2 border-[#18181B] shadow-[1.5px_1.5px_0px_#18181B] rounded-lg flex items-center gap-1 cursor-pointer transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5"
                 >
                   <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -804,6 +807,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
                       <div
                         key={conv.id}
                         onClick={() => handleSelectConversation(conv)}
+                        aria-disabled={loading}
                         className={`p-3 rounded-xl border-2 border-[#18181B] transition-all cursor-pointer flex items-center justify-between gap-3 ${
                           isActive
                             ? "bg-[#FEF08A] shadow-[3px_3px_0px_#18181B]"
@@ -835,6 +839,7 @@ export const CopilotChat: React.FC<CopilotChatProps> = ({
                         {/* Delete conversation button */}
                         <button
                           onClick={(e) => handleDeleteConversation(conv.id, e)}
+                          disabled={loading}
                           title="Delete this chat history"
                           className="p-1.5 rounded-lg border border-[#18181B] bg-white hover:bg-[#FF5533] hover:text-white transition-colors shrink-0 cursor-pointer"
                         >

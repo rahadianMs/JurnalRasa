@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local demo/promotion materials and generated exports
+/assets/banners/
+/output/
+/docs/audit-ideathon/
