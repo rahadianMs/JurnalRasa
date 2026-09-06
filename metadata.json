@@ -1,0 +1,6 @@
+{
+  "name": "RasaRadar",
+  "description": "AI-Powered Social Food Curator & Community Map turning social media food links into structured directories and geolocation maps.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

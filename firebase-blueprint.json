@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "UserSavedPlace": {
+      "path": "users/{userId}/saved_places/{placeId}",
+      "description": "Private culinary bookmark saved by a specific user",
+      "fields": {
+        "placeId": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "rating": { "type": "number" },
+        "sourceUrl": { "type": "string" },
+        "recommendedDishes": { "type": "array", "items": { "type": "string" } },
+        "estimatedPrice": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "personalNotes": { "type": "string" },
+        "savedAt": { "type": "string" }
+      }
+    },
+    "PublicPlace": {
+      "path": "public_places/{placeId}",
+      "description": "Crowdsourced aggregated public culinary point for Community Pulse map",
+      "fields": {
+        "placeId": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "rating": { "type": "number" },
+        "saveCount": { "type": "number" },
+        "topDishes": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "lastUpdated": { "type": "string" }
+      }
+    }
+  }
+}

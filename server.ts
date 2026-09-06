@@ -1,0 +1,900 @@
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import { GoogleGenAI, Type } from "@google/genai";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+export interface CulinaryParseResult {
+  placeId: string;
+  name: string;
+  city: string;
+  address: string;
+  lat: number;
+  lng: number;
+  rating?: number;
+  recommendedDishes: string[];
+  estimatedPrice?: string;
+  tags: string[];
+  vibesOrSummary?: string;
+  sourceUrl?: string;
+  personalNotes?: string;
+}
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// Lazy-initialized Gemini client with telemetry header
+let geminiClient: GoogleGenAI | null = null;
+let lastApiKey: string | undefined = undefined;
+
+function getGeminiClient(): GoogleGenAI | null {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    return null;
+  }
+  if (!geminiClient || key !== lastApiKey) {
+    lastApiKey = key;
+    geminiClient = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return geminiClient;
+}
+
+// Fallback Indonesian City Coordinates for Geocoding robustness
+const INDONESIA_CITY_COORDS: Record<string, { lat: number; lng: number }> = {
+  jakarta: { lat: -6.2088, lng: 106.8456 },
+  "jakarta selatan": { lat: -6.2615, lng: 106.8106 },
+  "jakarta pusat": { lat: -6.1805, lng: 106.8284 },
+  "jakarta barat": { lat: -6.1683, lng: 106.7588 },
+  "jakarta timur": { lat: -6.2250, lng: 106.9004 },
+  "jakarta utara": { lat: -6.1384, lng: 106.8640 },
+  bandung: { lat: -6.9175, lng: 107.6191 },
+  surabaya: { lat: -7.2575, lng: 112.7521 },
+  bali: { lat: -8.4095, lng: 115.1889 },
+  denpasar: { lat: -8.6705, lng: 115.2126 },
+  yogyakarta: { lat: -7.7956, lng: 110.3695 },
+  semarang: { lat: -6.9667, lng: 110.4167 },
+  medan: { lat: 3.5952, lng: 98.6722 },
+  makassar: { lat: -5.1477, lng: 119.4327 },
+  malang: { lat: -7.9666, lng: 112.6326 },
+  bogor: { lat: -6.5971, lng: 106.8060 },
+  tangerang: { lat: -6.1783, lng: 106.6319 },
+  bekasi: { lat: -6.2383, lng: 106.9756 },
+  depok: { lat: -6.4025, lng: 106.7942 },
+};
+
+// Helper to resolve shortlinks and extract TikTok / IG metadata
+async function fetchSocialMetadata(url: string): Promise<{
+  title?: string;
+  author?: string;
+  rawText?: string;
+  isPhotoSlide?: boolean;
+  resolvedUrl?: string;
+}> {
+  try {
+    let targetUrl = url.trim();
+    // Follow redirect if shortlink like vt.tiktok.com or vm.tiktok.com
+    if (targetUrl.includes("vt.tiktok.com") || targetUrl.includes("vm.tiktok.com")) {
+      try {
+        const headRes = await fetch(targetUrl, {
+          method: "HEAD",
+          redirect: "follow",
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(3000),
+        });
+        if (headRes.url) {
+          targetUrl = headRes.url;
+        }
+      } catch {}
+    }
+
+    const isPhotoSlide = targetUrl.includes("/photo/");
+
+    if (targetUrl.includes("tiktok.com")) {
+      // Try public oEmbed
+      try {
+        const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(targetUrl)}`;
+        const res = await fetch(oembedUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+          signal: AbortSignal.timeout(3500),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { title?: string; author_name?: string };
+          return {
+            title: data.title || "",
+            author: data.author_name || "",
+            rawText: `${data.title || ""} oleh @${data.author_name || ""}`,
+            isPhotoSlide,
+            resolvedUrl: targetUrl,
+          };
+        }
+      } catch {}
+
+      return {
+        isPhotoSlide,
+        resolvedUrl: targetUrl,
+      };
+    }
+  } catch (err) {
+    console.warn("Could not fetch oEmbed metadata directly:", err);
+  }
+  return {};
+}
+
+// Geocode using Google Places API if key provided, else fallback geocoding
+async function geocodePlace(
+  name: string,
+  city: string,
+  areaHint?: string
+): Promise<{
+  place_id: string;
+  official_name?: string;
+  formatted_address: string;
+  lat: number;
+  lng: number;
+  rating: number;
+}> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  if (apiKey) {
+    try {
+      const cleanSearchName = name.replace(/[^\w\s.,&-]/gi, " ").trim();
+      const searchQuery = [cleanSearchName, areaHint, city]
+        .filter(Boolean)
+        .join(" ");
+      const query = encodeURIComponent(searchQuery);
+      const endpoint = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${apiKey}`;
+      const res = await fetch(endpoint);
+      if (res.ok) {
+        const data = (await res.json()) as {
+          results?: Array<{
+            place_id?: string;
+            name?: string;
+            formatted_address?: string;
+            geometry?: { location?: { lat: number; lng: number } };
+            rating?: number;
+          }>;
+        };
+        if (data.results && data.results.length > 0) {
+          const first = data.results[0];
+          return {
+            place_id: first.place_id || `place_${Date.now()}`,
+            official_name: first.name || name,
+            formatted_address: first.formatted_address || `${name}, ${city}`,
+            lat: first.geometry?.location?.lat ?? -6.2088,
+            lng: first.geometry?.location?.lng ?? 106.8456,
+            rating: first.rating || 4.5,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("Google Places API error, using geocoding fallback:", err);
+    }
+  }
+
+  // Fallback geocoding: use OpenStreetMap Nominatim or city center with deterministic slight offset
+  try {
+    const q = encodeURIComponent(`${name} ${city}`);
+    const osmUrl = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`;
+    const res = await fetch(osmUrl, {
+      headers: { "User-Agent": "RasaRadar-Culinary-Curator/1.0" },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as Array<{
+        place_id?: number;
+        display_name?: string;
+        lat: string;
+        lon: string;
+      }>;
+      if (data && data.length > 0) {
+        return {
+          place_id: `osm_${data[0].place_id || Date.now()}`,
+          official_name: name,
+          formatted_address: data[0].display_name || `${name}, ${city}`,
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon),
+          rating: 4.6,
+        };
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // City-based offset deterministic fallback
+  const cityKey = city.toLowerCase();
+  const matchedCity = Object.keys(INDONESIA_CITY_COORDS).find((k) => cityKey.includes(k));
+  const base = matchedCity ? INDONESIA_CITY_COORDS[matchedCity] : INDONESIA_CITY_COORDS["jakarta"];
+
+  // Deterministic slight pseudo-hash offset so markers in the same city don't stack completely
+  const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const latOffset = ((hash % 40) - 20) * 0.0018;
+  const lngOffset = (((hash * 3) % 40) - 20) * 0.0018;
+
+  const cleanId = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "_")
+    .slice(0, 24);
+
+  return {
+    place_id: `rr_${cleanId}_${Date.now().toString(36)}`,
+    official_name: name,
+    formatted_address: `${name}, Area ${city || "Indonesia"}`,
+    lat: Number((base.lat + latOffset).toFixed(5)),
+    lng: Number((base.lng + lngOffset).toFixed(5)),
+    rating: 4.5,
+  };
+}
+
+// -------------------------------------------------------------
+// API Endpoints
+// -------------------------------------------------------------
+
+// Config endpoint for client awareness
+app.get("/api/config", (req, res) => {
+  res.json({
+    hasMapsKey: Boolean(process.env.GOOGLE_MAPS_API_KEY),
+    googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || "",
+    status: "ok",
+  });
+});
+
+// Helper to clean Indonesian restaurant / cafe name from social post text
+function cleanIndonesianPlaceName(raw: string): string {
+  let name = raw.trim();
+  // Strip slide/number/emoji prefix
+  name = name.replace(/^(?:(?:slide|foto|gambar|part)\s*\d+[:.-]?|\d+[\.\)\-:]|#\d+|\[\d+\]|📍|📌)\s*/i, "");
+  
+  // If there is a hyphen or dash separating name and description, take first part
+  if (name.includes(" - ")) {
+    name = name.split(" - ")[0];
+  } else if (name.includes(" : ")) {
+    name = name.split(" : ")[0];
+  }
+
+  // Strip clickbaits
+  const clickbaits = [
+    /\b(jujur ini enakkk*|jujur ini enak|enak bange+t+|enak parah+|viral bange+t+|wajib coba+|wajib mampir+|harus coba+|gila sih+|hidden gem+|kaget bange+t+|akhirnya nyobain+|nemu tempat+|parah sih+|ga pernah gagal+|rekomendasi tempat|spot nongkrong|creamy pedes gong+|ga nyangka|worth it bange+t+|rekomen bange+t+)\b!*/gi,
+    /^(?:rekomendasi|spot|tempat|kuliner|hidden gem|menu)\s+/i,
+  ];
+  for (const cb of clickbaits) {
+    name = name.replace(cb, " ");
+  }
+
+  // Remove trailing social markers
+  name = name.replace(/[@#*!]/g, "").replace(/\s+/g, " ").trim();
+  return name;
+}
+
+// Detect city from text with Indonesian location dictionary
+const INDONESIA_CITY_MAP = [
+  {
+    name: "Jakarta Selatan",
+    patterns: ["jakarta selatan", "jaksel", "blok m", "melawai", "senopati", "kemang", "tebet", "cilandak", "pondok indah", "pasar minggu", "mahakam", "gandaria", "haraku", "fatmawati"],
+  },
+  {
+    name: "Jakarta Pusat",
+    patterns: ["jakarta pusat", "jakpus", "menteng", "sabang", "tanah abang", "monas", "pasar baru", "grand indonesia", "thamrin"],
+  },
+  {
+    name: "Jakarta Barat",
+    patterns: ["jakarta barat", "jakbar", "mangga besar", "tanjung duren", "puri", "kebon jeruk"],
+  },
+  {
+    name: "Jakarta Timur",
+    patterns: ["jakarta timur", "jaktim", "rawamangun", "matraman", "jatinegara"],
+  },
+  {
+    name: "Jakarta Utara",
+    patterns: ["jakarta utara", "jakut", "kelapa gading", "pik", "pantai indah kapuk", "pluit", "sunter"],
+  },
+  {
+    name: "Bandung",
+    patterns: ["bandung", "cihapit", "braga", "dago", "riau bandung", "purwakarta", "lembang", "gedung sate", "lodaya", "lengkong", "progo"],
+  },
+  {
+    name: "Surabaya",
+    patterns: ["surabaya", "gubeng", "tunjungan", "dharmahusada", "kaliasin", "sinjay"],
+  },
+  {
+    name: "Bali",
+    patterns: ["bali", "denpasar", "seminyak", "canggu", "ubud", "sanur", "kuta", "legian", "mak beng"],
+  },
+  {
+    name: "Yogyakarta",
+    patterns: ["yogyakarta", "jogja", "malioboro", "prawirotaman", "kaliurang", "kranggan", "wijilan", "yu djum"],
+  },
+  {
+    name: "Bogor",
+    patterns: ["bogor", "surken", "suryakencana", "pajajaran", "sentul"],
+  },
+  {
+    name: "Semarang",
+    patterns: ["semarang", "simpang lima", "pandanaran", "kota lama"],
+  },
+  {
+    name: "Medan",
+    patterns: ["medan", "kesawan", "selat panjang"],
+  },
+  {
+    name: "Makassar",
+    patterns: ["makassar", "losari"],
+  },
+  {
+    name: "Malang",
+    patterns: ["malang", "batu"],
+  },
+];
+
+function detectIndonesianCity(text: string, defaultCity = "Jakarta Selatan"): string {
+  const lower = text.toLowerCase();
+  for (const item of INDONESIA_CITY_MAP) {
+    if (item.patterns.some((p) => lower.includes(p))) {
+      return item.name;
+    }
+  }
+  return defaultCity;
+}
+
+// Segments a multi-slide or recap post into individual place descriptions
+function segmentRecapOrSlidePost(text: string): {
+  contextCity: string;
+  items: string[];
+} {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const rawSegments: string[] = [];
+  let currentHeader = "";
+  let currentLines: string[] = [];
+
+  const itemHeaderRegex = /^(?:(?:slide|foto|gambar|part)\s*\d+[:.-]?|\d+[\.\)\-:]|#\d+|\[\d+\]|📍|📌)\s*/i;
+
+  for (const line of lines) {
+    if (itemHeaderRegex.test(line)) {
+      if (currentLines.length > 0) {
+        rawSegments.push(currentLines.join("\n"));
+        currentLines = [];
+      }
+      currentLines.push(line);
+    } else {
+      if (currentLines.length > 0) {
+        currentLines.push(line);
+      } else {
+        currentHeader += (currentHeader ? " " : "") + line;
+      }
+    }
+  }
+
+  if (currentLines.length > 0) {
+    rawSegments.push(currentLines.join("\n"));
+  }
+
+  // Detect context city from the intro header if any
+  const contextCity = detectIndonesianCity(currentHeader, "Jakarta Selatan");
+
+  // Filter out intro slides (e.g. "Slide 1: 4 Rekomendasi Kuliner Jaksel")
+  const items = rawSegments.filter((seg) => {
+    const t = seg.toLowerCase().replace(/^(?:slide|foto|gambar|part)\s*\d+[:.-]?\s*/i, "").trim();
+    if (/(?:rekomendasi|kumpulan|top|deretan|list)\s+\d+/i.test(t)) return false;
+    if (/^\d+\s+(?:rekomendasi|spot|tempat|kuliner)/i.test(t)) return false;
+    if (/^(?:save dulu|wajib save|part\s*\d+|edisi\s*kuliner)/i.test(t)) return false;
+    return true;
+  });
+
+  return { contextCity, items };
+}
+
+// Heuristic Indonesian culinary parser for single place
+function extractCulinaryHeuristics(
+  text: string,
+  url: string = "",
+  notes: string = "",
+  fallbackCity = "Jakarta Selatan"
+): {
+  restaurant_name: string;
+  city: string;
+  must_try_dishes: string[];
+  estimated_price: string;
+  tags: string[];
+  vibes_or_summary: string;
+} {
+  const combined = `${text || ""} ${url || ""} ${notes || ""}`;
+  const lower = combined.toLowerCase();
+
+  // 1. City Detection
+  const detectedCity = detectIndonesianCity(combined, fallbackCity);
+
+  // 2. Intelligent Restaurant Name Detection
+  let restaurantName = "";
+
+  // Check 2a: Mentions like @Haraku Ramen Halal, @KopiTokoDjawa, etc.
+  const mentions = text.match(/@([a-zA-Z0-9_.\s]+?)(?=\s*[#\n,!]|$)/g) || [];
+  for (const m of mentions) {
+    const cleanMention = m.replace("@", "").trim();
+    const isCulinaryVenue = /ramen|kopi|coffee|cafe|resto|restoran|warung|kedai|bakso|sate|mie|ayam|bebek|gultik|claypot|kitchen|dapur|grill|bbq|steak|sushi|dimsum|martabak|haraku|donut/i.test(cleanMention);
+    if (isCulinaryVenue) {
+      restaurantName = cleanMention.replace(/\s+(halal|official|indonesia|id|jkt)$/i, "").trim();
+      break;
+    }
+  }
+
+  // Check 2b: Cleaned place name from line or header
+  if (!restaurantName) {
+    const cleaned = cleanIndonesianPlaceName(text);
+    if (cleaned && cleaned.length > 2 && cleaned.length < 40 && !/enak|viral|murah|banget|parah|jujur/i.test(cleaned)) {
+      restaurantName = cleaned;
+    }
+  }
+
+  // Check 2c: Hashtags like #harakuramen, #claypotpopo, #gultikblokm
+  if (!restaurantName) {
+    const hashtags = (text.match(/#(\w+)/g) || []).map((h) => h.replace("#", ""));
+    for (const tag of hashtags) {
+      const tagLower = tag.toLowerCase();
+      if (tagLower === "harakuramen" || tagLower.includes("haraku")) {
+        restaurantName = "Haraku Ramen";
+        break;
+      } else if (tagLower === "gultikblokm" || tagLower === "gultik") {
+        restaurantName = "Gultik Blok M";
+        break;
+      } else if (tagLower === "claypotpopo" || tagLower.includes("claypot")) {
+        restaurantName = "Claypot Popo Melawai";
+        break;
+      } else if (tagLower === "satemaranggi" || tagLower.includes("maranggi")) {
+        restaurantName = "Sate Maranggi Hj. Yetty";
+        break;
+      } else if (tagLower === "warungmakbeng" || tagLower.includes("makbeng")) {
+        restaurantName = "Warung Mak Beng";
+        break;
+      } else if (tagLower === "bebeksinjay" || tagLower.includes("sinjay")) {
+        restaurantName = "Bebek Sinjay";
+        break;
+      } else if (tagLower.includes("ramen")) {
+        restaurantName = tag.replace(/ramen/i, " Ramen").trim();
+        break;
+      }
+    }
+  }
+
+  // Check 2d: Known famous culinary spots
+  if (!restaurantName) {
+    if (lower.includes("haraku ramen") || lower.includes("haraku")) {
+      restaurantName = "Haraku Ramen";
+    } else if (lower.includes("gultik")) {
+      restaurantName = "Gultik Blok M";
+    } else if (lower.includes("claypot popo") || lower.includes("claypot")) {
+      restaurantName = "Claypot Popo Melawai";
+    } else if (lower.includes("sate maranggi") || lower.includes("maranggi")) {
+      restaurantName = "Sate Maranggi Hj. Yetty";
+    } else if (lower.includes("mak beng")) {
+      restaurantName = "Warung Mak Beng";
+    } else if (lower.includes("toko djawa")) {
+      restaurantName = "Kopi Toko Djawa";
+    } else if (lower.includes("bebek sinjay") || lower.includes("sinjay")) {
+      restaurantName = "Bebek Sinjay";
+    } else if (lower.includes("kebon sirih")) {
+      restaurantName = "Nasi Goreng Kambing Kebon Sirih";
+    } else if (lower.includes("yu djum") || lower.includes("yudjum")) {
+      restaurantName = "Gudeg Yu Djum";
+    }
+  }
+
+  // Check 2e: Prefixes like "di [Name]", "ke [Name]"
+  if (!restaurantName) {
+    const cleanedText = cleanIndonesianPlaceName(text);
+    const prefixMatch = cleanedText.match(/(?:di|ke|mampir ke|nyobain|cobain|lokasi:?)\s+([A-Z][a-zA-Z0-9\s]{2,30}?)(?=[,.\n!#]|\s+di\b|\s+yang\b|$)/i);
+    if (prefixMatch && prefixMatch[1]) {
+      const candidate = prefixMatch[1].trim();
+      if (!/enak|viral|murah|banget|parah|jujur/i.test(candidate)) {
+        restaurantName = candidate;
+      }
+    }
+
+    if (!restaurantName) {
+      const segments = cleanedText.split(/[\n,!.?:-]/).map((s) => s.trim()).filter((s) => s.length > 2);
+      for (const seg of segments) {
+        if (!/enak|viral|banget|wajib|harus|jujur|parah|sih|gong/i.test(seg) && seg.length < 35) {
+          restaurantName = seg.replace(/[#@*]/g, "").trim();
+          break;
+        }
+      }
+    }
+  }
+
+  if (!restaurantName) {
+    restaurantName = "Kuliner Rekomendasi Viral";
+  }
+
+  // 3. Must-Try Dishes Extraction
+  const dishes: string[] = [];
+
+  // Hashtag dishes detection (e.g. #creamybararamen)
+  const hashtags = (text.match(/#(\w+)/g) || []).map((h) => h.replace("#", "").toLowerCase());
+  for (const h of hashtags) {
+    if (h === "creamybararamen") {
+      dishes.push("Creamy BARA Ramen");
+    } else if (h.includes("ramen") && h !== "harakuramen") {
+      dishes.push(h.replace(/ramen/g, " Ramen").trim());
+    }
+  }
+
+  const nameLower = restaurantName.toLowerCase();
+  if (lower.includes("ramen") || nameLower.includes("ramen")) {
+    if (!dishes.some((d) => d.toLowerCase().includes("creamy"))) {
+      if (lower.includes("creamy") || lower.includes("pedes") || lower.includes("bara")) {
+        dishes.push("Creamy BARA Ramen");
+      }
+    }
+    if (!dishes.some((d) => d.toLowerCase().includes("paitan"))) {
+      dishes.push("Tori Paitan Ramen");
+    }
+    dishes.push("Karaage & Tempura");
+  } else if (lower.includes("gulai") || lower.includes("gultik") || nameLower.includes("gultik")) {
+    dishes.push("Gulai Sapi Campur Urat", "Kerupuk Kulit Kuah Gulai");
+  } else if (lower.includes("claypot") || nameLower.includes("claypot")) {
+    dishes.push("Claypot Siram Telur Mentah", "Claypot Misua Tahu Telur Asin");
+  } else if (lower.includes("dimsum") || nameLower.includes("dimsum") || nameLower.includes("haka")) {
+    dishes.push("Siomay Udang Steamed", "Hakau Udang Kulit Transparan", "Onde-Onde Telur Asin");
+  } else if (lower.includes("donut") || nameLower.includes("donut")) {
+    dishes.push("Donat Kentang Klasik Gula Halus", "Donat Coklat Melted");
+  } else if (lower.includes("sate") || nameLower.includes("sate")) {
+    dishes.push("Sate Sapi & Kambing Maranggi", "Sambal Tomat Pedas Segar", "Ketan Bakar Gurih");
+  } else if (lower.includes("kopi") || lower.includes("cafe")) {
+    dishes.push("Es Kopi Awan", "Donat Coklat Klasik");
+  } else if (lower.includes("ikan") || lower.includes("seafood") || nameLower.includes("beng")) {
+    dishes.push("Ikan Goreng Crispy Bumbu Kuning", "Sup Kepala Ikan Pedas Segar");
+  } else if (lower.includes("bebek") || nameLower.includes("sinjay")) {
+    dishes.push("Bebek Goreng Kremes", "Sambal Pencit Mangga Muda");
+  } else if (lower.includes("gudeg") || nameLower.includes("yu djum")) {
+    dishes.push("Nasi Gudeg Kering Komplit", "Sambal Goreng Krecek Pedas");
+  } else if (lower.includes("cuanki") || lower.includes("serayu")) {
+    dishes.push("Cuanki Kuah Kaldu Gurih", "Batagor Renyah Bumbu Kacang");
+  } else if (lower.includes("bakso")) {
+    dishes.push("Bakso Urat Spesial", "Pangsit Goreng Renyah");
+  } else if (lower.includes("mie") || lower.includes("gacoan")) {
+    dishes.push("Mie Pedas Manis", "Pangsit Goreng Crispy");
+  }
+
+  if (dishes.length === 0) {
+    dishes.push("Menu Spesial Rekomendasi", "Minuman Segar");
+  }
+
+  // 4. Estimated Price
+  let estimatedPrice = "Rp 25.000 - Rp 50.000";
+  if (lower.includes("ramen") || nameLower.includes("ramen")) {
+    estimatedPrice = "Rp 35.000 - Rp 65.000";
+  } else if (lower.includes("gultik")) {
+    estimatedPrice = "Rp 15.000 - Rp 30.000";
+  } else if (lower.includes("claypot")) {
+    estimatedPrice = "Rp 40.000 - Rp 65.000";
+  } else if (lower.includes("donut")) {
+    estimatedPrice = "Rp 12.000 - Rp 25.000";
+  }
+
+  const priceMatch = text.match(/(?:rp\.?\s*|cuma\s*|harga\s*)(\d{1,3}(?:\.\d{3})*|\d+)\s*(?:rb|k|ribu)?/i);
+  if (priceMatch) {
+    const rawDigits = priceMatch[1].replace(/\./g, "");
+    const num = parseInt(rawDigits, 10);
+    if (num < 500) {
+      estimatedPrice = `Rp ${num}.000 / porsi`;
+    } else if (num >= 1000) {
+      estimatedPrice = `Rp ${num.toLocaleString("id-ID")} / porsi`;
+    }
+  }
+
+  // 5. Tags
+  const tags: string[] = ["Viral TikTok", "Rekomendasi Warga"];
+  if (lower.includes("halal") || lower.includes("sapi") || lower.includes("ayam") || nameLower.includes("ramen")) tags.push("Halal");
+  if (lower.includes("ramen") || nameLower.includes("ramen")) {
+    tags.push("Ramen", "Jepang");
+  }
+  if (lower.includes("streetfood") || lower.includes("trotoar") || lower.includes("kaki lima") || lower.includes("gultik")) {
+    tags.push("Street Food");
+  }
+  if (lower.includes("dimsum") || nameLower.includes("dimsum")) tags.push("Dimsum", "Chinese Food");
+  if (lower.includes("cafe") || lower.includes("kopi") || lower.includes("vintage")) tags.push("Cafe");
+  if (lower.includes("donut") || lower.includes("dessert") || lower.includes("manis")) tags.push("Dessert", "Pastry");
+  if (lower.includes("pedas") || lower.includes("sambal") || lower.includes("bara")) tags.push("Pedas");
+  if (lower.includes("malam") || lower.includes("02.00") || lower.includes("subuh") || lower.includes("24 jam")) tags.push("Kuliner Malam");
+  if (lower.includes("vintage") || lower.includes("hidden") || lower.includes("gang")) tags.push("Hidden Gem");
+
+  const vibes = `Tempat kuliner viral di ${detectedCity} dengan menu andalan ${dishes[0]}, suasana autentik yang banyak direkomendasikan foodies.`;
+
+  return {
+    restaurant_name: restaurantName,
+    city: detectedCity,
+    must_try_dishes: Array.from(new Set(dishes)),
+    estimated_price: estimatedPrice,
+    tags: Array.from(new Set(tags)),
+    vibes_or_summary: vibes,
+  };
+}
+
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Google Maps config endpoint
+app.get("/api/config/maps", (req, res) => {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || "";
+  res.json({ apiKey });
+});
+
+// Endpoint: Parse Link or Caption with Gemini AI / Smart Recaps (multi-slide & multi-place capable)
+app.post("/api/parse-link", async (req, res) => {
+  try {
+    const { url = "", caption = "", personalNotes = "" } = req.body;
+
+    let textToAnalyze = caption?.trim() || "";
+    let extractedMetadata: {
+      title?: string;
+      author?: string;
+      rawText?: string;
+      isPhotoSlide?: boolean;
+      resolvedUrl?: string;
+    } = {};
+
+    if (url && !textToAnalyze) {
+      extractedMetadata = await fetchSocialMetadata(url);
+      textToAnalyze = extractedMetadata.rawText || extractedMetadata.title || "";
+    }
+
+    // If still no text could be extracted from the URL, prompt for manual caption
+    if (!textToAnalyze) {
+      return res.json({
+        success: false,
+        needManualCaption: true,
+        isPhotoSlide: Boolean(extractedMetadata.isPhotoSlide),
+        message: extractedMetadata.isPhotoSlide
+          ? "Postingan ini adalah Carousel Foto TikTok! Silakan tempel caption, deskripsi, atau daftar tempat di slide foto pada kolom di bawah."
+          : "URL media sosial terhalang proteksi bot/CAPTCHA. Silakan tempel caption, komentar, atau deskripsi video kuliner secara manual di bawah.",
+      });
+    }
+
+    let extractedList: Array<{
+      restaurant_name: string;
+      city: string;
+      area_hint?: string;
+      must_try_dishes: string[];
+      estimated_price?: string;
+      tags: string[];
+      vibes_or_summary?: string;
+    }> = [];
+
+    let isAIGenerated = false;
+    let fallbackNotice = "";
+
+    // 1. Attempt with Gemini AI if client is configured
+    const ai = getGeminiClient();
+    if (ai) {
+      try {
+        const systemInstruction = `Kamu adalah pakar kurator kuliner Indonesia dan analisis media sosial (TikTok & Instagram).
+Tugasmu adalah mengekstrak informasi tempat makan dari postingan TikTok/Instagram menjadi JSON terstruktur persis sesuai skema.
+PANDUAN PENTING:
+1. Multi-Slide / Recap Posts: Jika teks memuat postingan multi-slide foto (Slide 1, Slide 2, dst) atau video kumpulan/recap (1., 2., 3., dst), ekstrak SETIAP tempat makan di slide/poin tersebut sebagai objek terpisah di dalam array "places". Abaikan slide pembuka/judul (misal: "4 Rekomendasi Kuliner").
+2. Single Place Post: Jika teks hanya membahas 1 tempat makan, kembalikan array "places" berisi 1 objek.
+3. restaurant_name: Nama tempat makan / brand resto / warung / cafe yang sebenarnya (contoh: "Haraku Ramen", "Gultik Blok M Pak Agus", "Claypot Popo Melawai"). PENTING: JANGAN PERNAH mengisi restaurant_name dengan judul clickbait seperti "JUJUR INI ENAKKK", "VIRAL BANGET", "ENAK PARAH", "WAJIB COBA", dll.
+4. city: Kota tempat kuliner berada (contoh: "Jakarta Selatan", "Bandung", "Surabaya", "Bali", "Yogyakarta").
+5. must_try_dishes: Array menu makanan atau minuman viral/rekomendasi.
+6. estimated_price: Estimasi harga per orang (contoh: "Rp 25.000 - Rp 50.000", "< Rp 30.000").
+7. tags: Array tag relevan (contoh: ["Halal", "Street Food", "Hidden Gem", "Viral TikTok", "Ramen", "Dimsum"]).`;
+
+        const prompt = `Analisis konten kuliner berikut dan ekstrak semua tempat makan yang ada:
+URL Sumber: ${url || "N/A"}
+Teks / Caption Video / Slide:
+"""
+${textToAnalyze}
+"""
+Catatan Tambahan: ${personalNotes || "Tidak ada"}`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                is_multi_place: { type: Type.BOOLEAN },
+                places: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      restaurant_name: { type: Type.STRING },
+                      city: { type: Type.STRING },
+                      area_hint: { type: Type.STRING },
+                      must_try_dishes: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                      },
+                      estimated_price: { type: Type.STRING },
+                      tags: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                      },
+                      vibes_or_summary: { type: Type.STRING },
+                    },
+                    required: ["restaurant_name", "city", "must_try_dishes", "tags"],
+                  },
+                },
+              },
+              required: ["places"],
+            },
+          },
+        });
+
+        const parsedJsonText = response.text?.trim();
+        if (parsedJsonText) {
+          const parsed = JSON.parse(parsedJsonText);
+          if (parsed && Array.isArray(parsed.places) && parsed.places.length > 0) {
+            extractedList = parsed.places;
+            isAIGenerated = true;
+          }
+        }
+      } catch (geminiError: any) {
+        const statusCode = geminiError?.status || 400;
+        console.log(`[Gemini API] Ekstraksi AI dialihkan ke parser cerdas multi-spot (HTTP ${statusCode}).`);
+        fallbackNotice =
+          "Ekstraksi menggunakan mode cerdas RasaRadar (kunci Gemini API di Settings > Secrets belum aktif atau kuota habis).";
+      }
+    } else {
+      fallbackNotice = "Kunci GEMINI_API_KEY belum disetel di Settings > Secrets. Menggunakan mode kurasi cerdas RasaRadar.";
+    }
+
+    // 2. Fallback to Supercharged Smart Multi-Slide / Recap Heuristic Extractor
+    if (extractedList.length === 0) {
+      const { contextCity, items } = segmentRecapOrSlidePost(textToAnalyze);
+      if (items.length > 1) {
+        // Multi-slide or recap detected
+        for (const itemText of items) {
+          const single = extractCulinaryHeuristics(itemText, url, personalNotes, contextCity);
+          if (
+            single.restaurant_name &&
+            single.restaurant_name !== "Kuliner Rekomendasi Viral" &&
+            !extractedList.some((x) => x.restaurant_name.toLowerCase() === single.restaurant_name.toLowerCase())
+          ) {
+            extractedList.push(single);
+          }
+        }
+      }
+
+      // If still empty or only 1 single post
+      if (extractedList.length === 0) {
+        const single = extractCulinaryHeuristics(textToAnalyze, url, personalNotes);
+        extractedList.push(single);
+      }
+    }
+
+    // 3. Clean and Geocode every place with Google Places API
+    const finalPlaces: CulinaryParseResult[] = [];
+
+    for (const item of extractedList) {
+      let cleanName = item.restaurant_name || "";
+      const nameCheck = cleanName.toLowerCase();
+      if (
+        /jujur ini enak|enak banget|enak parah|viral banget|wajib coba|gila sih|kaget banget|creamy pedes/i.test(nameCheck) ||
+        cleanName.trim().endsWith("!!!")
+      ) {
+        cleanName = cleanIndonesianPlaceName(cleanName);
+      }
+
+      const geocoded = await geocodePlace(cleanName, item.city, item.area_hint);
+
+      finalPlaces.push({
+        placeId: geocoded.place_id,
+        name: geocoded.official_name || cleanName,
+        city: item.city,
+        address: geocoded.formatted_address,
+        lat: geocoded.lat,
+        lng: geocoded.lng,
+        rating: geocoded.rating,
+        recommendedDishes: item.must_try_dishes || [],
+        estimatedPrice: item.estimated_price || "Rp 25.000 - Rp 60.000",
+        tags: item.tags || ["Kuliner"],
+        vibesOrSummary: item.vibes_or_summary || "",
+        sourceUrl: url,
+        personalNotes: personalNotes || "",
+      });
+    }
+
+    const isMultiPlace = finalPlaces.length > 1;
+
+    return res.json({
+      success: true,
+      isAIGenerated,
+      isFallback: !isAIGenerated,
+      fallbackNotice,
+      isMultiPlace,
+      places: finalPlaces,
+      data: finalPlaces[0], // Backwards compatible with single place callers
+    });
+  } catch (error: any) {
+    console.error("[parse-link] Mengalihkan ke mode ekstraksi kuliner cerdas cadangan:", error);
+    const fallback = extractCulinaryHeuristics(
+      req.body?.caption || "",
+      req.body?.url || "",
+      req.body?.personalNotes || ""
+    );
+    const geocoded = await geocodePlace(fallback.restaurant_name, fallback.city);
+    const singlePlace: CulinaryParseResult = {
+      placeId: geocoded.place_id,
+      name: geocoded.official_name || fallback.restaurant_name,
+      city: fallback.city,
+      address: geocoded.formatted_address,
+      lat: geocoded.lat,
+      lng: geocoded.lng,
+      rating: geocoded.rating,
+      recommendedDishes: fallback.must_try_dishes,
+      estimatedPrice: fallback.estimated_price,
+      tags: fallback.tags,
+      vibesOrSummary: fallback.vibes_or_summary,
+      sourceUrl: req.body?.url || "",
+      personalNotes: req.body?.personalNotes || "",
+    };
+
+    return res.json({
+      success: true,
+      isAIGenerated: false,
+      isFallback: true,
+      fallbackNotice: "Ekstraksi menggunakan mode cadangan.",
+      isMultiPlace: false,
+      places: [singlePlace],
+      data: singlePlace,
+    });
+  }
+});
+
+// Endpoint: Manual Place Search & Geocoding
+app.post("/api/geocode", async (req, res) => {
+  try {
+    const { name, city } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: "Nama tempat wajib diisi" });
+    }
+    const result = await geocodePlace(name, city || "Indonesia");
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Vite Middleware / Production Static Server Setup
+// -------------------------------------------------------------
+async function startServer() {
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`RasaRadar Server running on port ${PORT}`);
+  });
+}
+
+startServer();
